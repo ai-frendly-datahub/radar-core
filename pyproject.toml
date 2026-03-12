@@ -6,7 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "radar-core"
 version = "0.2.0"
 description = "Shared core library for Radar data collection platform"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "AI-Friendly DataHub Team" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "duckdb>=0.9.0",
     "feedparser>=6.0",
@@ -20,6 +30,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-cov>=4.0"]
 korean = ["kiwipiepy>=0.17"]
+
+[project.urls]
+Repository = "https://github.com/AI-Friendly-DataHub/radar-core"
+Issues = "https://github.com/AI-Friendly-DataHub/radar-core/issues"
 
 [tool.setuptools]
 packages = ["radar_core", "radar_core.common"]
