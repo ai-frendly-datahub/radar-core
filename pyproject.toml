@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radar-core"
+version = "0.2.0"
+description = "Shared core library for Radar data collection platform"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=0.9.0",
+    "feedparser>=6.0",
+    "requests>=2.31",
+    "tenacity>=8.2",
+    "jinja2>=3.1",
+    "structlog>=23.1",
+    "pybreaker>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-mock>=3.10", "pytest-cov>=4.0"]
+korean = ["kiwipiepy>=0.17"]
+
+[tool.setuptools]
+packages = ["radar_core", "radar_core.common"]
+
+[tool.setuptools.package-data]
+radar_core = ["py.typed"]
