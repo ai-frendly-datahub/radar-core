@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -17,7 +17,7 @@ def _utc_naive(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.astimezone(UTC).replace(tzinfo=None)
     return dt
 
 
@@ -71,7 +71,7 @@ class RadarStorage:
         collector_version: str | None = None,
         fetch_status: str | None = None,
     ) -> None:
-        now = _utc_naive(datetime.now(timezone.utc))
+        now = _utc_naive(datetime.now(UTC))
         fetched_at = now if (run_id or collector_version or fetch_status) else None
         rows: list[tuple[object, ...]] = []
         for article in articles:
@@ -138,7 +138,7 @@ class RadarStorage:
     def recent_articles(
         self, category: str, *, days: int = 7, limit: int = 200
     ) -> list[Article]:
-        since = _utc_naive(datetime.now(timezone.utc) - timedelta(days=days))
+        since = _utc_naive(datetime.now(UTC) - timedelta(days=days))
         cur = self.conn.execute(
             """
             SELECT category, source, title, link, summary, published, collected_at, entities_json
@@ -214,7 +214,7 @@ class RadarStorage:
         return results
 
     def delete_older_than(self, days: int) -> int:
-        cutoff = _utc_naive(datetime.now(timezone.utc) - timedelta(days=days))
+        cutoff = _utc_naive(datetime.now(UTC) - timedelta(days=days))
         count_row = self.conn.execute(
             "SELECT COUNT(*) FROM articles WHERE COALESCE(published, collected_at) < ?",
             [cutoff],

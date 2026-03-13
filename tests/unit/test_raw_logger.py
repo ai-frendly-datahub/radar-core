@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -14,7 +14,7 @@ def _make_article(*, title: str = "Sample title", summary: str = "요약") -> Ar
         title=title,
         link="https://example.com/article",
         summary=summary,
-        published=datetime(2026, 3, 4, 10, 0, tzinfo=timezone.utc),
+        published=datetime(2026, 3, 4, 10, 0, tzinfo=UTC),
         source="RSS Source",
         category="coffee",
         matched_entities={"brands": ["Blue Bottle"]},
@@ -27,7 +27,7 @@ def test_log_creates_yyyy_mm_dd_directory_and_jsonl_file(tmp_path: Path) -> None
 
     output_path = logger.log([article], source_name="MySource")
 
-    assert output_path.parent.name == datetime.now(timezone.utc).date().isoformat()
+    assert output_path.parent.name == datetime.now(UTC).date().isoformat()
     assert output_path.name == "MySource.jsonl"
     assert output_path.exists()
 

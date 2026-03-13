@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 import duckdb
+
 from radar_core.migration import migrate
 from radar_core.models import Article
 from radar_core.storage import RadarStorage
@@ -149,7 +150,7 @@ def test_upsert_articles_accepts_lineage_fields(tmp_path: Path) -> None:
         title="Lineage write",
         link="https://example.com/lineage",
         summary="lineage metadata",
-        published=datetime(2026, 3, 11, 11, 0, tzinfo=timezone.utc),
+        published=datetime(2026, 3, 11, 11, 0, tzinfo=UTC),
         source="Example RSS",
         category="tech",
         matched_entities={"topic": ["ai"]},

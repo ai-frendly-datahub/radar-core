@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import Article
@@ -19,7 +19,7 @@ class RawLogger:
         source_name: str,
         run_id: str | None = None,
     ) -> Path:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         date_dir = self.raw_dir / now.date().isoformat()
         safe_source_name = source_name.replace("/", "_").replace("\\", "_")
 

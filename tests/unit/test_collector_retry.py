@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
+
 from radar_core.collector import RateLimiter, _collect_single, collect_sources
 from radar_core.exceptions import NetworkError, SourceError
 from radar_core.models import Article, Source

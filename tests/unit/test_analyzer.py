@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -64,7 +64,7 @@ def _make_article(*, title: str, summary: str) -> _Article:
         title=title,
         link=f"https://example.com/{title.lower().replace(' ', '-')}",
         summary=summary,
-        published=datetime(2026, 3, 10, 9, 0, tzinfo=timezone.utc),
+        published=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
         source="Example RSS",
         category="tech",
     )
