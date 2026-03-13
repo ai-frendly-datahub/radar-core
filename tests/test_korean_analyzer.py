@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from radar_core.common import korean_analyzer
 from radar_core.common.korean_analyzer import KoreanAnalyzer
 

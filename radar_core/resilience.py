@@ -5,6 +5,8 @@ import threading
 import structlog
 from pybreaker import (
     CircuitBreaker,
+)
+from pybreaker import (
     CircuitBreakerListener as PyBreakerCircuitBreakerListener,
 )
 

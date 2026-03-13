@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import cast
 
 import duckdb
-
-from radar_core.models import Article
 from radar_core.migration import migrate
+from radar_core.models import Article
 from radar_core.storage import RadarStorage
 
 
@@ -64,7 +63,7 @@ def test_migration_preserves_old_data_and_new_columns_are_null(tmp_path: Path) -
     db_path = tmp_path / "legacy_data.duckdb"
     _create_legacy_articles_schema(db_path)
 
-    legacy_collected = datetime(2026, 3, 11, 8, 0)
+    legacy_collected = datetime(2026, 3, 11, 8, 0, tzinfo=UTC)
     conn = duckdb.connect(str(db_path))
     try:
         _ = conn.execute(
