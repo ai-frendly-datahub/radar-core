@@ -68,7 +68,7 @@ def _create_session() -> requests.Session:
     retry_strategy = Retry(
         total=3,
         backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
+        status_forcelist=[408, 429, 500, 502, 503, 504, 522, 524],
         allowed_methods=frozenset(["GET"]),
         raise_on_status=False,
     )
@@ -85,12 +85,30 @@ def _fetch_url_with_retry(
     headers: dict[str, str] | None = None,
     session: requests.Session | None = None,
 ) -> requests.Response:
+    """Fetch URL with retry logic on transient errors.
+    
+    Args:
+        url: URL to fetch
+        timeout: Request timeout in seconds
+        headers: Optional custom headers
+        session: Optional requests Session to use
+        
+    Returns:
+        requests.Response object
+        
+    Raises:
+        requests.Timeout: When all retries timeout
+        requests.ConnectionError: When all retries fail to connect
+        requests.HTTPError: When HTTP error persists after retries
+    """
     merged = {**_DEFAULT_HEADERS, **(headers or {})}
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(requests.exceptions.RequestException),
+        retry=retry_if_exception_type(
+            (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
+        ),
         reraise=True,
     )
     def _fetch() -> requests.Response:
