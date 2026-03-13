@@ -106,7 +106,11 @@ def _fetch_url_with_retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type(
-            (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
+            (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError,
+            )
         ),
         reraise=True,
     )
