@@ -85,16 +85,16 @@ def _fetch_url_with_retry(
     session: requests.Session | None = None,
 ) -> requests.Response:
     """Fetch URL with retry logic on transient errors.
-    
+
     Args:
         url: URL to fetch
         timeout: Request timeout in seconds
         headers: Optional custom headers
         session: Optional requests Session to use
-        
+
     Returns:
         requests.Response object
-        
+
     Raises:
         requests.Timeout: When all retries timeout
         requests.ConnectionError: When all retries fail to connect
@@ -226,11 +226,17 @@ def _collect_single(
                         if isinstance(value, str):
                             summary = value
 
+            title = html.unescape(_entry_text(entry, "title").strip()) or "(no title)"
+            link = _entry_text(entry, "link").strip()
+
+            # Validate required fields
+            if not link:
+                continue
+
             items.append(
                 Article(
-                    title=html.unescape(_entry_text(entry, "title").strip())
-                    or "(no title)",
-                    link=_entry_text(entry, "link").strip(),
+                    title=title,
+                    link=link,
                     summary=html.unescape(summary.strip()),
                     published=published,
                     source=source.name,
