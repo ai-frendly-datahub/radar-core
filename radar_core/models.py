@@ -64,6 +64,14 @@ class TelegramSettings:
 
 
 @dataclass
+class CrawlHealthAlert:
+    source_name: str
+    failure_count: int
+    last_error: str | None
+    disabled_at: datetime
+
+
+@dataclass
 class NotificationConfig:
     enabled: bool
     channels: list[str]
