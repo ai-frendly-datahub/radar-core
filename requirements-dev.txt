@@ -1,0 +1,10 @@
+# Development/tooling dependencies for radar-core
+# Install with: pip install -r requirements-dev.txt
+#
+# Note: pytest, pytest-mock, pytest-cov are in pyproject.toml [project.optional-dependencies.dev]
+
+# Security scanning
+bandit>=1.7.0
+
+# Linting (already available system-wide, listed for completeness)
+ruff>=0.1.0
