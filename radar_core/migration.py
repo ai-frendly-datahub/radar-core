@@ -64,8 +64,26 @@ def _migration_v001_lineage_columns(conn: duckdb.DuckDBPyConnection) -> None:
         _ = conn.execute(f"ALTER TABLE articles ADD COLUMN {name} {data_type}")
 
 
+def _migration_v002_crawl_health(conn: duckdb.DuckDBPyConnection) -> None:
+    _ = conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS crawl_health (
+            source_name TEXT PRIMARY KEY,
+            success_count INTEGER DEFAULT 0,
+            failure_count INTEGER DEFAULT 0,
+            current_delay REAL DEFAULT 0.0,
+            last_error TEXT,
+            disabled BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[str, MigrationFn], ...] = (
     ("v001_lineage_columns", _migration_v001_lineage_columns),
+    ("v002_crawl_health", _migration_v002_crawl_health),
 )
 
 
