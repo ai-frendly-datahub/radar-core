@@ -117,7 +117,7 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    assert first_applied == ["v001_lineage_columns"]
+    assert first_applied == ["v001_lineage_columns", "v002_crawl_health"]
     assert second_applied == []
 
 
