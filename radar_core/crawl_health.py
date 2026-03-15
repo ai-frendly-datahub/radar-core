@@ -208,7 +208,7 @@ class CrawlHealthStore:
         except Exception as exc:
             raise StorageError("Failed to read crawl health") from exc
 
-        if row is None:
+        if not row:
             return None
 
         return CrawlHealthRecord(
