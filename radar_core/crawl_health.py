@@ -187,24 +187,25 @@ class CrawlHealthStore:
     def get_health(self, source_name: str) -> CrawlHealthRecord | None:
         self.flush()
         try:
-            row = cast(
-                tuple[object, ...] | None,
-                self.conn.execute(
-                    """
-                    SELECT
-                        source_name,
-                        success_count,
-                        failure_count,
-                        current_delay,
-                        last_error,
-                        disabled,
-                        updated_at
-                    FROM crawl_health
-                    WHERE source_name = ?
-                    """,
-                    [source_name],
-                ).fetchone(),
-            )
+            with self._write_lock:
+                row = cast(
+                    tuple[object, ...] | None,
+                    self.conn.execute(
+                        """
+                        SELECT
+                            source_name,
+                            success_count,
+                            failure_count,
+                            current_delay,
+                            last_error,
+                            disabled,
+                            updated_at
+                        FROM crawl_health
+                        WHERE source_name = ?
+                        """,
+                        [source_name],
+                    ).fetchone(),
+                )
         except Exception as exc:
             raise StorageError("Failed to read crawl health") from exc
 
