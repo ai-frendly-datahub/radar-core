@@ -161,17 +161,16 @@ def generate_report(
 
 def generate_index_html(
     report_dir: Path,
-    summaries_dir: Path | None = None,
+    radar_name: str = "Radar",
 ) -> Path:
     """Generate an index.html listing all available report files.
 
-    Scans the report directory for HTML files and creates an index page that lists
-    both dated reports (e.g., category_20240315.html) and latest reports.
-    Optionally includes links to summary JSON files if summaries_dir is provided.
+    Scans the report directory for summary JSON and HTML files, then renders
+    templates/index.html with report metadata and trend data.
 
     Args:
-        report_dir: Directory containing report HTML files.
-        summaries_dir: Optional directory containing summary JSON files to link from index.
+        report_dir: Directory containing report and summary files.
+        radar_name: Display name for the index page header.
 
     Returns:
         Path to the generated index.html file.
@@ -179,7 +178,104 @@ def generate_index_html(
     Raises:
         IOError: If the report directory cannot be created or index file cannot be written.
     """
-    ...
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    standard_pattern = re.compile(r"^(.+)_(\d{8})\.html$")
+    advanced_pattern = re.compile(r"^(\d{4}-\d{2}-\d{2})$")
+
+    summaries: list[dict[str, Any]] = []
+    for summary_path in report_dir.glob("*_summary.json"):
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        summary = {
+            "date": payload.get("date", ""),
+            "category": payload.get("category", ""),
+            "article_count": int(payload.get("article_count", 0) or 0),
+            "source_count": int(payload.get("source_count", 0) or 0),
+            "matched_count": int(payload.get("matched_count", 0) or 0),
+            "top_entities": payload.get("top_entities", []),
+        }
+        summaries.append(summary)
+
+    summaries.sort(key=lambda item: str(item.get("date") or ""), reverse=True)
+
+    report_entries: list[tuple[str, str, dict[str, str]]] = []
+
+    for html_path in report_dir.glob("*.html"):
+        if html_path.name == "index.html":
+            continue
+
+        filename = html_path.name
+        match = standard_pattern.match(filename)
+        if match:
+            category_name, raw_date = match.groups()
+            date_label = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+            report_entries.append(
+                (
+                    date_label,
+                    filename,
+                    {
+                        "filename": filename,
+                        "display_name": f"{category_name} - {date_label}",
+                        "date": date_label,
+                        "date_label": date_label,
+                    },
+                )
+            )
+            continue
+
+        report_entries.append(
+            (
+                "",
+                filename,
+                {
+                    "filename": filename,
+                    "display_name": html_path.stem.replace("_", " ").title(),
+                    "date": "",
+                    "date_label": "",
+                },
+            )
+        )
+
+    for advanced_index in report_dir.glob("*/index.html"):
+        relative_path = advanced_index.relative_to(report_dir)
+        parent_name = advanced_index.parent.name
+        if not advanced_pattern.match(parent_name):
+            continue
+
+        report_entries.append(
+            (
+                parent_name,
+                str(relative_path),
+                {
+                    "filename": str(relative_path),
+                    "display_name": parent_name,
+                    "date": parent_name,
+                    "date_label": parent_name,
+                },
+            )
+        )
+
+    report_entries.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    reports = [entry[2] for entry in report_entries]
+
+    templates_dir = Path(__file__).parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    template = env.get_template("index.html")
+
+    rendered = template.render(
+        radar_name=radar_name,
+        reports=reports,
+        summaries_json=json.dumps(summaries, ensure_ascii=False),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+    index_path = report_dir / "index.html"
+    index_path.write_text(rendered, encoding="utf-8")
+    return index_path
 
 
 def generate_summary_json(

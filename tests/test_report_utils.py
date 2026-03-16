@@ -5,7 +5,11 @@ import re
 from datetime import datetime, timezone
 
 from radar_core.models import Article, CategoryConfig
-from radar_core.report_utils import generate_report, generate_summary_json
+from radar_core.report_utils import (
+    generate_index_html,
+    generate_report,
+    generate_summary_json,
+)
 
 
 def test_generate_summary_json(tmp_path) -> None:
@@ -181,3 +185,94 @@ def test_generate_report(tmp_path, monkeypatch) -> None:
         {"name": "Nintendo", "count": 2},
         {"name": "Xbox", "count": 1},
     ]
+
+
+def test_generate_index_html(tmp_path) -> None:
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+
+    (report_dir / "game_20260315.html").write_text("game", encoding="utf-8")
+    (report_dir / "policy_20260314.html").write_text("policy", encoding="utf-8")
+    (report_dir / "latest_report.html").write_text("latest", encoding="utf-8")
+    (report_dir / "index.html").write_text("old index", encoding="utf-8")
+
+    advanced_dir = report_dir / "2026-03-16"
+    advanced_dir.mkdir()
+    (advanced_dir / "index.html").write_text("advanced", encoding="utf-8")
+
+    (report_dir / "misc" / "index.html").parent.mkdir()
+    (report_dir / "misc" / "index.html").write_text("ignored", encoding="utf-8")
+
+    (report_dir / "game_20260315_summary.json").write_text(
+        json.dumps(
+            {
+                "date": "2026-03-15",
+                "category": "game",
+                "article_count": 42,
+                "source_count": 8,
+                "matched_count": 35,
+                "top_entities": [{"name": "Nintendo", "count": 12}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (report_dir / "policy_20260314_summary.json").write_text(
+        json.dumps(
+            {
+                "date": "2026-03-14",
+                "category": "policy",
+                "article_count": 30,
+                "source_count": 6,
+                "matched_count": 20,
+                "top_entities": [{"name": "Tax", "count": 5}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    index_path = generate_index_html(report_dir=report_dir, radar_name="Unified Radar")
+
+    assert index_path == report_dir / "index.html"
+    assert index_path.exists()
+
+    rendered = index_path.read_text(encoding="utf-8")
+    assert "Unified Radar" in rendered
+    assert "game_20260315.html" in rendered
+    assert "policy_20260314.html" in rendered
+    assert "2026-03-16/index.html" in rendered
+    assert "latest_report.html" in rendered
+    assert "misc/index.html" not in rendered
+    assert "old index" not in rendered
+
+    reports_match = re.search(r"reports:\s*(\[[\s\S]*?\])\s*,\s*summaries:", rendered)
+    assert reports_match is not None
+    reports = json.loads(reports_match.group(1))
+    assert reports[0]["filename"] == "2026-03-16/index.html"
+    assert reports[0]["date"] == "2026-03-16"
+    assert reports[1]["filename"] == "game_20260315.html"
+    assert reports[1]["date_label"] == "2026-03-15"
+    assert reports[2]["filename"] == "policy_20260314.html"
+    latest_entry = next(
+        report for report in reports if report["filename"] == "latest_report.html"
+    )
+    assert latest_entry["date"] == ""
+    assert latest_entry["date_label"] == ""
+
+    summaries_match = re.search(
+        r"summaries:\s*(\[[\s\S]*?\])\s*,\s*generatedAt:", rendered
+    )
+    assert summaries_match is not None
+    summaries = json.loads(summaries_match.group(1))
+    assert [item["date"] for item in summaries] == ["2026-03-15", "2026-03-14"]
+    assert summaries[0]["category"] == "game"
+    assert summaries[0]["article_count"] == 42
+    assert summaries[0]["top_entities"] == [{"name": "Nintendo", "count": 12}]
+
+    empty_dir = tmp_path / "empty"
+    empty_index = generate_index_html(report_dir=empty_dir)
+    empty_rendered = empty_index.read_text(encoding="utf-8")
+    empty_summaries_match = re.search(
+        r"summaries:\s*(\[[\s\S]*?\])\s*,\s*generatedAt:", empty_rendered
+    )
+    assert empty_summaries_match is not None
+    assert json.loads(empty_summaries_match.group(1)) == []
