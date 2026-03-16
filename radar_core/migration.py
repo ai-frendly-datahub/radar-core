@@ -87,6 +87,18 @@ _MIGRATIONS: tuple[tuple[str, MigrationFn], ...] = (
 )
 
 
+def _repair_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Ensure expected columns exist even if migration was previously recorded.
+
+    Guards against stale ``_migrations`` entries where the ``ALTER TABLE``
+    did not actually persist (e.g. DuckDB version mismatch or silent
+    failure during an earlier run).
+    """
+    if not _table_exists(conn, "articles"):
+        return
+    _migration_v001_lineage_columns(conn)
+
+
 def migrate(conn: duckdb.DuckDBPyConnection) -> list[str]:
     _ensure_migrations_table(conn)
     applied = _applied_versions(conn)
@@ -101,5 +113,10 @@ def migrate(conn: duckdb.DuckDBPyConnection) -> list[str]:
             [version],
         )
         newly_applied.append(version)
+
+    # Always verify critical schema columns exist, regardless of
+    # _migrations state.  Fixes stale DBs where v001 was recorded
+    # but columns were never actually added.
+    _repair_schema(conn)
 
     return newly_applied
