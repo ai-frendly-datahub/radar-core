@@ -650,24 +650,71 @@
       .map(r => r.date);
 
     {# ============================================
-       TODO: Task 7 — Implement calendar logic
+       Task 7 — Calendar Logic (Flatpickr Integration)
        ============================================ #}
-    // TODO: Task 7 — implement calendar logic
-    // Requirements:
-    // 1. Initialize Flatpickr on #calendar-container
-    // 2. Highlight dates that have reports (use availableDates array)
-    // 3. On date selection, scroll to/filter the corresponding report card
-    // 4. Enable date range selection for filtering multiple reports
-    //
-    // Example structure:
-    // flatpickr("#calendar-container", {
-    //   inline: true,
-    //   mode: "range",
-    //   enable: availableDates,
-    //   onChange: function(selectedDates, dateStr) {
-    //     // Filter/scroll to selected report(s)
-    //   }
-    // });
+    (function initCalendar() {
+      const calendarContainer = document.getElementById('calendar-container');
+      if (!calendarContainer || typeof flatpickr === 'undefined') {
+        console.warn('Flatpickr not available or container missing');
+        return;
+      }
+
+      // Build enabled dates array from available reports
+      const enabledDates = availableDates.length > 0 ? availableDates : [];
+
+      // Build a map of date -> summary for entity lookup
+      const summaryByDate = new Map();
+      if (RADAR_DATA.summaries && Array.isArray(RADAR_DATA.summaries)) {
+        RADAR_DATA.summaries.forEach(s => {
+          if (s.date) {
+            summaryByDate.set(s.date, s);
+          }
+        });
+      }
+
+      // Initialize Flatpickr with dark theme
+      flatpickr("#calendar-container", {
+        inline: true,
+        mode: "single",
+        dateFormat: "Y-m-d",
+        enable: enabledDates,
+        theme: "dark",
+        disableMobile: true,
+        onChange: function(selectedDates, dateStr, instance) {
+          if (!dateStr) return;
+
+          // Find the report card for the selected date
+          const targetCard = document.querySelector(`.report-card[data-date="${dateStr}"]`);
+
+          if (targetCard) {
+            // Scroll to the card with smooth behavior
+            targetCard.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+
+            // Highlight the card briefly
+            targetCard.style.boxShadow = '0 0 20px rgba(74, 158, 255, 0.5)';
+            setTimeout(() => {
+              targetCard.style.boxShadow = '';
+            }, 1500);
+          } else {
+            // If no card found, check if we should navigate to report
+            const matchingReport = RADAR_DATA.reports.find(r => r.date === dateStr);
+            if (matchingReport && matchingReport.filename) {
+              window.location.href = matchingReport.filename;
+            }
+          }
+        },
+        onReady: function(selectedDates, dateStr, instance) {
+          // Apply dark theme overrides for Flatpickr
+          const calendar = instance.calendarContainer;
+          if (calendar) {
+            calendar.style.background = 'transparent';
+          }
+        }
+      });
+    })();
 
     {# ============================================
        TODO: Task 8 — Implement search logic
@@ -695,28 +742,82 @@
     // }, 200));
 
     {# ============================================
-       TREND CHART INITIALIZATION (Skeleton)
+       TREND CHART INITIALIZATION (Task 7)
        ============================================ #}
-    // Initialize empty trend chart - data populated from summaries
-    const ctx = document.getElementById('trend-chart');
-    if (ctx) {
-      const trendChart = new Chart(ctx, {
+    // Build summary lookup map for tooltip entity display
+    const chartSummaryByDate = new Map();
+    if (RADAR_DATA.summaries && Array.isArray(RADAR_DATA.summaries)) {
+      RADAR_DATA.summaries.forEach(s => {
+        if (s.date) {
+          chartSummaryByDate.set(s.date, s);
+        }
+      });
+    }
+
+    // Initialize trend chart with data from summaries
+    const trendCanvas = document.getElementById('trend-chart');
+
+    // Handle edge case: <3 data points - show message instead of empty chart
+    if (!trendCanvas) {
+      console.warn('Trend chart canvas not found');
+    } else if (!RADAR_DATA.summaries || RADAR_DATA.summaries.length < 3) {
+      // Not enough data for meaningful trend chart
+      const parentWidget = trendCanvas.closest('.widget');
+      if (parentWidget) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'chart-message';
+        messageDiv.style.cssText = `
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          min-height: 200px;
+          color: var(--text-muted);
+          text-align: center;
+          padding: var(--space-6);
+        `;
+        messageDiv.innerHTML = `
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.5; margin-bottom: var(--space-3);">
+            <path d="M3 3v18h18"></path>
+            <path d="M7 16l4-4 4 4 5-6"></path>
+          </svg>
+          <p style="margin: 0; font-size: 0.9375rem;">
+            ${RADAR_DATA.summaries && RADAR_DATA.summaries.length > 0
+              ? `${RADAR_DATA.summaries.length} report${RADAR_DATA.summaries.length === 1 ? '' : 's'} available.<br>Need at least 3 for trend visualization.`
+              : 'No reports available yet.<br>Trend chart will appear with more data.'}
+          </p>
+        `;
+        trendCanvas.replaceWith(messageDiv);
+      }
+    } else {
+      // Enough data - render the chart
+      const sorted = [...RADAR_DATA.summaries].sort((a, b) =>
+        new Date(a.date) - new Date(b.date)
+      );
+
+      const chartLabels = sorted.map(s => s.date);
+      const chartData = sorted.map(s => s.article_count || 0);
+
+      const trendChart = new Chart(trendCanvas, {
         type: 'line',
         data: {
-          labels: [], // Populated from RADAR_DATA.summaries
+          labels: chartLabels,
           datasets: [{
             label: 'Articles',
-            data: [], // Populated from RADAR_DATA.summaries
-            borderColor: 'rgba(74, 158, 255, 0.8)',
-            backgroundColor: 'rgba(74, 158, 255, 0.1)',
-            borderWidth: 2,
+            data: chartData,
+            borderColor: 'rgba(74, 158, 255, 0.9)',
+            backgroundColor: 'rgba(74, 158, 255, 0.12)',
+            borderWidth: 2.5,
             fill: true,
-            tension: 0.3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            tension: 0.35,
+            pointRadius: 4,
+            pointHoverRadius: 7,
             pointBackgroundColor: 'rgba(74, 158, 255, 1)',
             pointBorderColor: 'rgba(10, 14, 23, 1)',
-            pointBorderWidth: 2
+            pointBorderWidth: 2,
+            pointHoverBackgroundColor: 'rgba(51, 214, 197, 1)',
+            pointHoverBorderColor: 'rgba(10, 14, 23, 1)'
           }]
         },
         options: {
@@ -727,13 +828,50 @@
               display: false
             },
             tooltip: {
-              backgroundColor: 'rgba(20, 28, 44, 0.95)',
+              backgroundColor: 'rgba(20, 28, 44, 0.96)',
               titleColor: '#e4e6eb',
               bodyColor: '#b0b3b8',
-              borderColor: 'rgba(150, 190, 255, 0.2)',
+              borderColor: 'rgba(74, 158, 255, 0.3)',
               borderWidth: 1,
-              cornerRadius: 8,
-              padding: 12
+              cornerRadius: 10,
+              padding: 14,
+              titleFont: {
+                family: 'JetBrains Mono, monospace',
+                size: 12,
+                weight: '600'
+              },
+              bodyFont: {
+                family: 'Pretendard Variable, Pretendard, sans-serif',
+                size: 13
+              },
+              displayColors: false,
+              callbacks: {
+                title: function(context) {
+                  // Format date nicely
+                  const dateStr = context[0].label;
+                  const date = new Date(dateStr + 'T00:00:00');
+                  return date.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  });
+                },
+                label: function(context) {
+                  const count = context.parsed.y;
+                  return `Articles: ${count.toLocaleString()}`;
+                },
+                afterLabel: function(context) {
+                  // Show top entity name
+                  const dateStr = context.label;
+                  const summary = chartSummaryByDate.get(dateStr);
+                  if (summary && summary.top_entities && summary.top_entities.length > 0) {
+                    const topEntity = summary.top_entities[0];
+                    return `Top: ${topEntity.name} (${topEntity.count})`;
+                  }
+                  return '';
+                }
+              }
             }
           },
           scales: {
@@ -743,11 +881,15 @@
                 drawBorder: false
               },
               ticks: {
-                color: 'rgba(176, 179, 184, 0.6)',
+                color: 'rgba(176, 179, 184, 0.7)',
                 font: {
                   family: 'JetBrains Mono, monospace',
                   size: 10
-                }
+                },
+                maxRotation: 45,
+                minRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8
               }
             },
             y: {
@@ -757,30 +899,25 @@
                 drawBorder: false
               },
               ticks: {
-                color: 'rgba(176, 179, 184, 0.6)',
+                color: 'rgba(176, 179, 184, 0.7)',
                 font: {
                   family: 'JetBrains Mono, monospace',
                   size: 10
-                }
+                },
+                precision: 0
               }
             }
           },
           interaction: {
             intersect: false,
             mode: 'index'
+          },
+          animation: {
+            duration: 800,
+            easing: 'easeOutQuart'
           }
         }
       });
-
-      // Populate chart data from summaries (if available)
-      if (RADAR_DATA.summaries && RADAR_DATA.summaries.length > 0) {
-        const sorted = [...RADAR_DATA.summaries].sort((a, b) =>
-          new Date(a.date) - new Date(b.date)
-        );
-        trendChart.data.labels = sorted.map(s => s.date);
-        trendChart.data.datasets[0].data = sorted.map(s => s.article_count || 0);
-        trendChart.update();
-      }
     }
 
     {# ============================================
