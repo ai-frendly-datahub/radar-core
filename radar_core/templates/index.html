@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>{{ radar_name|default('Radar') }} - Reports Index</title>
+
+  {# Preconnect for performance #}
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  {# Fonts: Pretendard for UI, JetBrains Mono for monospace #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+
+  {# Flatpickr Calendar Widget #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/themes/dark.css">
+
+  <style>
+    {# ============================================
+       DESIGN SYSTEM: Dark Theme Variables
+       ============================================ #}
+    :root {
+      {# Background colors #}
+      --bg-primary: #0a0e17;
+      --bg-secondary: #111827;
+      --bg-card: rgba(20, 28, 44, 0.85);
+      --bg-card-hover: rgba(30, 40, 60, 0.95);
+      --bg-glass: rgba(10, 16, 30, 0.72);
+
+      {# Text colors #}
+      --text-primary: #e4e6eb;
+      --text-secondary: #b0b3b8;
+      --text-muted: #6b7280;
+      --text-faint: rgba(233, 238, 251, 0.52);
+
+      {# Accent colors #}
+      --accent-primary: #4a9eff;
+      --accent-secondary: #33d6c5;
+      --accent-highlight: #f6c84c;
+      --accent-danger: #ff5b6e;
+
+      {# Border & shadows #}
+      --border-color: rgba(150, 190, 255, 0.14);
+      --border-highlight: rgba(150, 190, 255, 0.22);
+      --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.28);
+      --shadow-glow: 0 0 40px rgba(74, 158, 255, 0.12);
+
+      {# Spacing scale (8px base) #}
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-5: 1.25rem;
+      --space-6: 1.5rem;
+      --space-8: 2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+
+      {# Border radius #}
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+
+      {# Typography #}
+      --font-sans: "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+      {# Transitions #}
+      --transition-fast: 0.15s ease-out;
+      --transition-normal: 0.25s ease-out;
+
+      {# Layout #}
+      --max-width: 1280px;
+    }
+
+    {# ============================================
+       BASE STYLES
+       ============================================ #}
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(74, 158, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(51, 214, 197, 0.06) 0%, transparent 50%);
+      min-height: 100vh;
+    }
+
+    a {
+      color: var(--accent-primary);
+      text-decoration: none;
+      transition: color var(--transition-fast);
+    }
+
+    a:hover {
+      color: var(--accent-secondary);
+    }
+
+    {# ============================================
+       LAYOUT CONTAINERS
+       ============================================ #}
+    .page-container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: var(--space-6);
+    }
+
+    {# ============================================
+       HEADER SECTION
+       ============================================ #}
+    .header {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-xl);
+      padding: var(--space-8);
+      margin-bottom: var(--space-6);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .header__title {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-2);
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header__subtitle {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      margin-bottom: var(--space-4);
+    }
+
+    .header__stats {
+      display: flex;
+      gap: var(--space-6);
+      flex-wrap: wrap;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .stat-label {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    {# ============================================
+       WIDGETS GRID
+       ============================================ #}
+    .widgets-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+      margin-bottom: var(--space-6);
+    }
+
+    @media (max-width: 768px) {
+      .widgets-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    {# ============================================
+       CALENDAR WIDGET
+       ============================================ #}
+    .widget {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-soft);
+      transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+    }
+
+    .widget:hover {
+      border-color: var(--border-highlight);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .widget__title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .widget__title::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      background: var(--accent-primary);
+      border-radius: 2px;
+    }
+
+    #calendar-container {
+      min-height: 280px;
+    }
+
+    {# Flatpickr dark theme overrides #}
+    .flatpickr-calendar {
+      background: transparent !important;
+      box-shadow: none !important;
+      border: none !important;
+      width: 100% !important;
+    }
+
+    .flatpickr-months {
+      margin-bottom: var(--space-2);
+    }
+
+    .flatpickr-current-month {
+      color: var(--text-primary) !important;
+    }
+
+    .flatpickr-day {
+      color: var(--text-secondary) !important;
+      border-radius: var(--radius-sm) !important;
+    }
+
+    .flatpickr-day:hover {
+      background: var(--bg-card-hover) !important;
+      color: var(--text-primary) !important;
+    }
+
+    .flatpickr-day.selected {
+      background: var(--accent-primary) !important;
+      border-color: var(--accent-primary) !important;
+      color: var(--bg-primary) !important;
+    }
+
+    {# ============================================
+       TREND CHART WIDGET
+       ============================================ #}
+    #trend-chart {
+      width: 100%;
+      height: 260px;
+    }
+
+    {# ============================================
+       SEARCH BAR
+       ============================================ #}
+    .search-container {
+      margin-bottom: var(--space-6);
+    }
+
+    .search-input-wrapper {
+      position: relative;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: var(--space-4);
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: var(--space-4) var(--space-4) var(--space-4) var(--space-10);
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      color: var(--text-primary);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+    }
+
+    {# ============================================
+       REPORTS GRID
+       ============================================ #}
+    .reports-section {
+      margin-bottom: var(--space-6);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .section-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+    }
+
+    @media (max-width: 1024px) {
+      .reports-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .reports-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    {# ============================================
+       REPORT CARD
+       ============================================ #}
+    .report-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      transition: all var(--transition-normal);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .report-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-primary);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .report-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+
+    .report-card__date {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .report-card__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-radius: var(--radius-sm);
+      background: rgba(74, 158, 255, 0.15);
+      color: var(--accent-primary);
+    }
+
+    .report-card__meta {
+      display: flex;
+      gap: var(--space-4);
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .report-card__meta-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .report-card__entities {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: auto;
+    }
+
+    .entity-tag {
+      padding: var(--space-1) var(--space-2);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background: rgba(51, 214, 197, 0.1);
+      border: 1px solid rgba(51, 214, 197, 0.2);
+      border-radius: var(--radius-sm);
+      transition: all var(--transition-fast);
+    }
+
+    .entity-tag:hover {
+      background: rgba(51, 214, 197, 0.2);
+      color: var(--accent-secondary);
+    }
+
+    {# ============================================
+       EMPTY STATE
+       ============================================ #}
+    .empty-state {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--text-muted);
+    }
+
+    .empty-state__icon {
+      font-size: 3rem;
+      margin-bottom: var(--space-4);
+      opacity: 0.5;
+    }
+
+    .empty-state__text {
+      font-size: 1rem;
+    }
+
+    {# ============================================
+       FOOTER
+       ============================================ #}
+    .footer {
+      text-align: center;
+      padding: var(--space-6);
+      color: var(--text-muted);
+      font-size: 0.8125rem;
+      border-top: 1px solid var(--border-color);
+      margin-top: var(--space-8);
+    }
+
+    .footer__timestamp {
+      font-family: var(--font-mono);
+      color: var(--text-faint);
+    }
+
+    {# ============================================
+       UTILITY CLASSES
+       ============================================ #}
+    .hidden {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    {# ============================================
+       HEADER SECTION
+       ============================================ #}
+    <header class="header">
+      <h1 class="header__title">{{ radar_name|default('Radar Reports') }}</h1>
+      <p class="header__subtitle">Track trends and insights from collected data</p>
+
+      <div class="header__stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ reports|length }}</span>
+          <span class="stat-label">Total Reports</span>
+        </div>
+        {% if reports %}
+        <div class="stat-item">
+          <span class="stat-value">{{ reports[0].date if reports[0].date else 'Latest' }}</span>
+          <span class="stat-label">Latest Report</span>
+        </div>
+        {% if reports[-1].date %}
+        <div class="stat-item">
+          <span class="stat-value">{{ reports[-1].date }}</span>
+          <span class="stat-label">Earliest Report</span>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </header>
+
+    {# ============================================
+       WIDGETS: Calendar + Trend Chart
+       ============================================ #}
+    <div class="widgets-grid">
+      {# Calendar Widget #}
+      <div class="widget">
+        <h2 class="widget__title">Select Date</h2>
+        <div id="calendar-container"></div>
+      </div>
+
+      {# Trend Chart Widget #}
+      <div class="widget">
+        <h2 class="widget__title">Activity Trend</h2>
+        <canvas id="trend-chart" aria-label="Report activity trend chart" role="img"></canvas>
+      </div>
+    </div>
+
+    {# ============================================
+       SEARCH BAR
+       ============================================ #}
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Search reports by date, name, or entities..."
+          aria-label="Search reports"
+        >
+      </div>
+    </div>
+
+    {# ============================================
+       REPORTS SECTION
+       ============================================ #}
+    <section class="reports-section">
+      <div class="section-header">
+        <h2 class="section-title">All Reports</h2>
+      </div>
+
+      <div id="reports-grid" class="reports-grid">
+        {% if reports %}
+          {% for report in reports %}
+          <a href="{{ report.filename }}" class="report-card" data-date="{{ report.date }}" data-name="{{ report.display_name }}">
+            <div class="report-card__header">
+              <span class="report-card__date">{{ report.date if report.date else report.display_name }}</span>
+              {% if report.date %}
+              <span class="report-card__badge">Daily</span>
+              {% else %}
+              <span class="report-card__badge" style="background: rgba(246, 200, 76, 0.15); color: var(--accent-highlight);">Latest</span>
+              {% endif %}
+            </div>
+            <div class="report-card__meta">
+              <span class="report-card__meta-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                View Report
+              </span>
+            </div>
+            {# Entity tags will be populated via JS from summaries_json #}
+            <div class="report-card__entities" data-summary-date="{{ report.date }}">
+              {# Populated by JavaScript #}
+            </div>
+          </a>
+          {% endfor %}
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state__icon">📊</div>
+          <p class="empty-state__text">No reports available yet. Check back later.</p>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ============================================
+       FOOTER
+       ============================================ #}
+    <footer class="footer">
+      <p>
+        Generated by <strong>{{ radar_name|default('Radar') }}</strong> &middot;
+        <span class="footer__timestamp">
+          {% if generated_at %}
+            {% if generated_at.isoformat is defined %}
+              {{ generated_at.isoformat() }}
+            {% else %}
+              {{ generated_at }}
+            {% endif %}
+          {% else %}
+            {{ "now"|datetime("isoformat") }}
+          {% endif %}
+        </span>
+      </p>
+    </footer>
+  </div>
+
+  {# ============================================
+       SCRIPTS
+       ============================================ #}
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <script>
+    {# Pass Jinja2 data to JavaScript #}
+    const RADAR_DATA = {
+      name: {{ radar_name|tojson|safe if radar_name else '"Radar"' }},
+      reports: {{ reports|tojson|safe }},
+      summaries: {{ summaries_json|safe if summaries_json else '[]' }},
+      generatedAt: {% if generated_at %}{% if generated_at.isoformat is defined %}"{{ generated_at.isoformat() }}"{% else %}"{{ generated_at }}"{% endif %}{% else %}null{% endif %}
+    };
+
+    {# Available dates for calendar highlighting #}
+    const availableDates = RADAR_DATA.reports
+      .filter(r => r.date)
+      .map(r => r.date);
+
+    {# ============================================
+       TODO: Task 7 — Implement calendar logic
+       ============================================ #}
+    // TODO: Task 7 — implement calendar logic
+    // Requirements:
+    // 1. Initialize Flatpickr on #calendar-container
+    // 2. Highlight dates that have reports (use availableDates array)
+    // 3. On date selection, scroll to/filter the corresponding report card
+    // 4. Enable date range selection for filtering multiple reports
+    //
+    // Example structure:
+    // flatpickr("#calendar-container", {
+    //   inline: true,
+    //   mode: "range",
+    //   enable: availableDates,
+    //   onChange: function(selectedDates, dateStr) {
+    //     // Filter/scroll to selected report(s)
+    //   }
+    // });
+
+    {# ============================================
+       TODO: Task 8 — Implement search logic
+       ============================================ #}
+    // TODO: Task 8 — implement search logic
+    // Requirements:
+    // 1. Listen for input on #search-input
+    // 2. Filter report cards by:
+    //    - Date (YYYY-MM-DD format)
+    //    - Display name
+    //    - Entity names (from summaries data)
+    // 3. Show/hide cards based on match
+    // 4. Debounce input for performance
+    //
+    // Example structure:
+    // const searchInput = document.getElementById('search-input');
+    // const reportCards = document.querySelectorAll('.report-card');
+    //
+    // searchInput.addEventListener('input', debounce(function(e) {
+    //   const query = e.target.value.toLowerCase().trim();
+    //   reportCards.forEach(card => {
+    //     const matches = /* check date, name, entities */;
+    //     card.classList.toggle('hidden', !matches);
+    //   });
+    // }, 200));
+
+    {# ============================================
+       TREND CHART INITIALIZATION (Skeleton)
+       ============================================ #}
+    // Initialize empty trend chart - data populated from summaries
+    const ctx = document.getElementById('trend-chart');
+    if (ctx) {
+      const trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [], // Populated from RADAR_DATA.summaries
+          datasets: [{
+            label: 'Articles',
+            data: [], // Populated from RADAR_DATA.summaries
+            borderColor: 'rgba(74, 158, 255, 0.8)',
+            backgroundColor: 'rgba(74, 158, 255, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(74, 158, 255, 1)',
+            pointBorderColor: 'rgba(10, 14, 23, 1)',
+            pointBorderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              backgroundColor: 'rgba(20, 28, 44, 0.95)',
+              titleColor: '#e4e6eb',
+              bodyColor: '#b0b3b8',
+              borderColor: 'rgba(150, 190, 255, 0.2)',
+              borderWidth: 1,
+              cornerRadius: 8,
+              padding: 12
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                color: 'rgba(150, 190, 255, 0.08)',
+                drawBorder: false
+              },
+              ticks: {
+                color: 'rgba(176, 179, 184, 0.6)',
+                font: {
+                  family: 'JetBrains Mono, monospace',
+                  size: 10
+                }
+              }
+            },
+            y: {
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(150, 190, 255, 0.08)',
+                drawBorder: false
+              },
+              ticks: {
+                color: 'rgba(176, 179, 184, 0.6)',
+                font: {
+                  family: 'JetBrains Mono, monospace',
+                  size: 10
+                }
+              }
+            }
+          },
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          }
+        }
+      });
+
+      // Populate chart data from summaries (if available)
+      if (RADAR_DATA.summaries && RADAR_DATA.summaries.length > 0) {
+        const sorted = [...RADAR_DATA.summaries].sort((a, b) =>
+          new Date(a.date) - new Date(b.date)
+        );
+        trendChart.data.labels = sorted.map(s => s.date);
+        trendChart.data.datasets[0].data = sorted.map(s => s.article_count || 0);
+        trendChart.update();
+      }
+    }
+
+    {# ============================================
+       UTILITY: Debounce function
+       ============================================ #}
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    {# ============================================
+       ENTITY TAGS POPULATION
+       ============================================ #}
+    // Populate entity tags for each report card from summaries data
+    function populateEntityTags() {
+      if (!RADAR_DATA.summaries || RADAR_DATA.summaries.length === 0) return;
+
+      const summaryMap = new Map(
+        RADAR_DATA.summaries.map(s => [s.date, s])
+      );
+
+      document.querySelectorAll('.report-card__entities').forEach(container => {
+        const date = container.dataset.summaryDate;
+        if (!date) return;
+
+        const summary = summaryMap.get(date);
+        if (!summary || !summary.top_entities) return;
+
+        const topEntities = summary.top_entities.slice(0, 3);
+        container.innerHTML = topEntities
+          .map(e => `<span class="entity-tag">${escapeHtml(e.name)} (${e.count})</span>`)
+          .join('');
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Run on load
+    populateEntityTags();
+  </script>
+</body>
+</html>
