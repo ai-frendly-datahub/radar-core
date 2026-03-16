@@ -38,7 +38,7 @@ Repository = "https://github.com/AI-Friendly-DataHub/radar-core"
 Issues = "https://github.com/AI-Friendly-DataHub/radar-core/issues"
 
 [tool.setuptools]
-packages = ["radar_core", "radar_core.common", "radar_core.templates"]
+packages = ["radar_core", "radar_core.common", "radar_core.templates", "radar_core.plugins"]
 
 [tool.setuptools.package-data]
-radar_core = ["py.typed"]
+radar_core = ["py.typed", "templates/*.html"]

@@ -19,12 +19,15 @@ from .models import (
     Article,
     CategoryConfig,
     CrawlHealthAlert,
+    EmailConfig,
     EmailSettings,
     EntityDefinition,
     NotificationConfig,
     RadarSettings,
     Source,
+    StandardNotificationConfig,
     TelegramSettings,
+    WebhookConfig,
 )
 from .nl_query import ParsedQuery, parse_query
 from .notifier import (
@@ -53,6 +56,7 @@ __all__ = [
     "CrawlHealthAlert",
     "CrawlHealthRecord",
     "CrawlHealthStore",
+    "EmailConfig",
     "EmailSettings",
     "EmailNotifier",
     "EntityDefinition",
@@ -79,8 +83,10 @@ __all__ = [
     "Source",
     "SourceError",
     "SourceThrottleState",
+    "StandardNotificationConfig",
     "StorageError",
     "TelegramNotifier",
     "TelegramSettings",
+    "WebhookConfig",
     "WebhookNotifier",
 ]

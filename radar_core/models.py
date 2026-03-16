@@ -79,3 +79,16 @@ class NotificationConfig:
     webhook_url: str | None = None
     telegram: TelegramSettings | None = None
     rules: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass
+class WebhookConfig:
+    """Webhook notification configuration."""
+
+    url: str = ""
+    enabled: bool = False
+
+
+# Backward compatibility aliases for downstream repos
+EmailConfig = EmailSettings
+StandardNotificationConfig = NotificationConfig
