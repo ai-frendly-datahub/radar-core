@@ -4,12 +4,77 @@ import json
 import re
 from datetime import datetime, timezone
 
+import pytest
+
 from radar_core.models import Article, CategoryConfig
 from radar_core.report_utils import (
     generate_index_html,
     generate_report,
     generate_summary_json,
 )
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def fixed_now():
+    return datetime(2024, 3, 15, 9, 30, tzinfo=timezone.utc)
+
+
+@pytest.fixture()
+def sample_articles(fixed_now):
+    return [
+        Article(
+            title="Zelda Launch",
+            link="https://example.com/zelda",
+            summary="Nintendo released a new Zelda trailer.",
+            published=fixed_now,
+            source="IGN",
+            category="game",
+            matched_entities={"Nintendo": ["nintendo", "zelda"]},
+            collected_at=fixed_now,
+        ),
+        Article(
+            title="Xbox Update",
+            link="https://example.com/xbox",
+            summary="Xbox announced spring update.",
+            published=None,
+            source="GameSpot",
+            category="game",
+            matched_entities={"Xbox": ["xbox"]},
+            collected_at=fixed_now,
+        ),
+    ]
+
+
+@pytest.fixture()
+def sample_category():
+    return CategoryConfig(
+        category_name="game",
+        display_name="Game Radar",
+        sources=[],
+        entities=[],
+    )
+
+
+@pytest.fixture()
+def sample_stats():
+    return {"sources": 2, "collected": 2, "matched": 2, "window_days": 7}
+
+
+@pytest.fixture()
+def patch_datetime(monkeypatch, fixed_now):
+    """Monkeypatch datetime.now to return *fixed_now*."""
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
 
 
 def test_generate_summary_json(tmp_path) -> None:
@@ -276,3 +341,289 @@ def test_generate_index_html(tmp_path) -> None:
     )
     assert empty_summaries_match is not None
     assert json.loads(empty_summaries_match.group(1)) == []
+
+
+# ── New comprehensive tests ──────────────────────────────────────────────
+
+
+def test_generate_summary_json_schema(tmp_path) -> None:
+    articles = [
+        {
+            "source": "Reuters",
+            "matched_entities": {"Apple": ["apple", "iphone"]},
+        },
+    ]
+    result_path = generate_summary_json(
+        category_name="tech",
+        articles=articles,
+        stats={"article_count": 1, "source_count": 1, "matched_count": 1},
+        output_dir=tmp_path,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+
+    required_fields = {
+        "date": str,
+        "category": str,
+        "article_count": int,
+        "source_count": int,
+        "matched_count": int,
+        "top_entities": list,
+        "sources": dict,
+        "generated_at": str,
+    }
+    for field_name, expected_type in required_fields.items():
+        assert field_name in payload, f"Missing field: {field_name}"
+        assert isinstance(payload[field_name], expected_type), (
+            f"{field_name} should be {expected_type.__name__}, got {type(payload[field_name]).__name__}"
+        )
+
+
+def test_generate_summary_json_top_entities_sorted(tmp_path) -> None:
+    articles = [
+        {"source": "A", "matched_entities": {"Z_rare": ["z"]}},
+        {"source": "B", "matched_entities": {"A_common": ["a1", "a2", "a3"]}},
+        {"source": "C", "matched_entities": {"M_mid": ["m1", "m2"]}},
+        {"source": "D", "matched_entities": {"A_common": ["a4"]}},
+    ]
+    result_path = generate_summary_json(
+        category_name="sort_test",
+        articles=articles,
+        stats={},
+        output_dir=tmp_path,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    entities = payload["top_entities"]
+
+    assert len(entities) == 3
+    counts = [e["count"] for e in entities]
+    assert counts == sorted(counts, reverse=True), "top_entities must be sorted DESC"
+    assert entities[0]["name"] == "A_common"
+    assert entities[0]["count"] == 4
+
+
+def test_generate_summary_json_empty_articles(tmp_path) -> None:
+    result_path = generate_summary_json(
+        category_name="empty",
+        articles=[],
+        stats={},
+        output_dir=tmp_path,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert payload["article_count"] == 0
+    assert payload["source_count"] == 0
+    assert payload["matched_count"] == 0
+    assert payload["top_entities"] == []
+    assert payload["sources"] == {}
+    assert payload["category"] == "empty"
+    assert payload["date"]
+    assert payload["generated_at"]
+
+
+def test_generate_report_html_output(
+    tmp_path, sample_category, sample_articles, sample_stats, patch_datetime
+) -> None:
+    output_path = tmp_path / "reports" / "game_report.html"
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path,
+        stats=sample_stats,
+    )
+    html = output_path.read_text(encoding="utf-8")
+
+    expected_canvases = [
+        "chartEntities",
+        "chartTimeline",
+        "chartSources",
+        "chartFreshness",
+        "chartEntityRate",
+        "chartSourceHealth",
+    ]
+    for canvas_id in expected_canvases:
+        assert f'id="{canvas_id}"' in html, f"Missing canvas: {canvas_id}"
+    assert "canvas" in html
+
+
+def test_generate_report_plugin_charts(
+    tmp_path, sample_category, sample_articles, sample_stats, patch_datetime
+) -> None:
+    plugin_charts = {
+        "heatmap": {
+            "id": "entity-heatmap",
+            "title": "Entity Heatmap",
+            "config_json": '{"type": "heatmap"}',
+        },
+        "trend": {
+            "id": "trend-line",
+            "title": "Trend Analysis",
+            "config_json": '{"type": "line"}',
+        },
+    }
+    output_path = tmp_path / "reports" / "game_report.html"
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path,
+        stats=sample_stats,
+        plugin_charts=plugin_charts,
+    )
+    html = output_path.read_text(encoding="utf-8")
+
+    assert "Entity Heatmap" in html
+    assert "Trend Analysis" in html
+    assert 'id="plugin-entity-heatmap"' in html
+    assert 'id="plugin-trend-line"' in html
+    assert "plugin-charts" in html
+
+
+def test_generate_report_prev_next(
+    tmp_path, sample_category, sample_articles, sample_stats, patch_datetime
+) -> None:
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+    output_path = report_dir / "game_report.html"
+
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path,
+        stats=sample_stats,
+        prev_report="game_20240314.html",
+        next_report="game_20240316.html",
+    )
+    html = output_path.read_text(encoding="utf-8")
+
+    assert 'href="game_20240314.html"' in html
+    assert 'href="game_20240316.html"' in html
+
+    output_path2 = report_dir / "game_report_no_nav.html"
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path2,
+        stats=sample_stats,
+    )
+    html_no_nav = output_path2.read_text(encoding="utf-8")
+    assert 'disabled aria-disabled="true"' in html_no_nav
+
+
+def test_generate_report_dated_copy(
+    tmp_path, sample_category, sample_articles, sample_stats, patch_datetime
+) -> None:
+    report_dir = tmp_path / "reports"
+    output_path = report_dir / "game_report.html"
+
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path,
+        stats=sample_stats,
+    )
+
+    dated_copy = report_dir / "game_20240315.html"
+    assert dated_copy.exists()
+    assert re.fullmatch(r"game_\d{8}\.html", dated_copy.name)
+    assert dated_copy.read_text(encoding="utf-8") == output_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_generate_index_html_with_summaries(tmp_path) -> None:
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+
+    (report_dir / "tech_20240315.html").write_text(
+        "<html>tech</html>", encoding="utf-8"
+    )
+    (report_dir / "tech_20240315_summary.json").write_text(
+        json.dumps(
+            {
+                "date": "2024-03-15",
+                "category": "tech",
+                "article_count": 50,
+                "source_count": 10,
+                "matched_count": 40,
+                "top_entities": [{"name": "Apple", "count": 15}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (report_dir / "policy_20240314.html").write_text(
+        "<html>policy</html>", encoding="utf-8"
+    )
+    (report_dir / "policy_20240314_summary.json").write_text(
+        json.dumps(
+            {
+                "date": "2024-03-14",
+                "category": "policy",
+                "article_count": 25,
+                "source_count": 5,
+                "matched_count": 18,
+                "top_entities": [{"name": "Tax", "count": 8}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    index_path = generate_index_html(report_dir=report_dir, radar_name="Test Radar")
+    rendered = index_path.read_text(encoding="utf-8")
+
+    assert "Test Radar" in rendered
+    assert "tech_20240315.html" in rendered
+    assert "policy_20240314.html" in rendered
+
+    summaries_match = re.search(
+        r"summaries:\s*(\[[\s\S]*?\])\s*,\s*generatedAt:", rendered
+    )
+    assert summaries_match is not None
+    summaries = json.loads(summaries_match.group(1))
+    assert len(summaries) == 2
+    assert summaries[0]["date"] == "2024-03-15"
+    assert summaries[0]["article_count"] == 50
+    assert summaries[1]["date"] == "2024-03-14"
+
+
+def test_generate_index_html_no_summaries(tmp_path) -> None:
+    report_dir = tmp_path / "empty_reports"
+
+    index_path = generate_index_html(report_dir=report_dir, radar_name="Empty Radar")
+    assert index_path.exists()
+
+    rendered = index_path.read_text(encoding="utf-8")
+    assert "Empty Radar" in rendered
+
+    summaries_match = re.search(
+        r"summaries:\s*(\[[\s\S]*?\])\s*,\s*generatedAt:", rendered
+    )
+    assert summaries_match is not None
+    assert json.loads(summaries_match.group(1)) == []
+
+    reports_match = re.search(r"reports:\s*(\[[\s\S]*?\])\s*,\s*summaries:", rendered)
+    assert reports_match is not None
+    assert json.loads(reports_match.group(1)) == []
+
+
+def test_generate_index_html_mixed_date_patterns(tmp_path) -> None:
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+
+    (report_dir / "game_20240315.html").write_text("<html>a</html>", encoding="utf-8")
+
+    advanced_dir = report_dir / "2024-03-16"
+    advanced_dir.mkdir()
+    (advanced_dir / "index.html").write_text("<html>b</html>", encoding="utf-8")
+
+    index_path = generate_index_html(report_dir=report_dir)
+    rendered = index_path.read_text(encoding="utf-8")
+
+    assert "game_20240315.html" in rendered
+    assert "2024-03-16/index.html" in rendered
+
+    reports_match = re.search(r"reports:\s*(\[[\s\S]*?\])\s*,\s*summaries:", rendered)
+    assert reports_match is not None
+    reports = json.loads(reports_match.group(1))
+    dates = [r["date"] for r in reports if r["date"]]
+    assert "2024-03-16" in dates
+    assert "2024-03-15" in dates
+    assert dates == sorted(dates, reverse=True)
