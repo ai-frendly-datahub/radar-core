@@ -82,13 +82,27 @@ class NotificationConfig:
 
 
 @dataclass
-class WebhookConfig:
-    """Webhook notification configuration."""
-
-    url: str = ""
+class EmailConfig:
     enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    from_addr: str = ""
+    to_addrs: list[str] = field(default_factory=list)
 
 
-# Backward compatibility aliases for downstream repos
-EmailConfig = EmailSettings
-StandardNotificationConfig = NotificationConfig
+@dataclass
+class WebhookConfig:
+    enabled: bool = False
+    url: str = ""
+    method: str = "POST"
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class StandardNotificationConfig:
+    enabled: bool = False
+    channels: list[str] = field(default_factory=list)
+    email: EmailConfig | None = None
+    webhook: WebhookConfig | None = None
