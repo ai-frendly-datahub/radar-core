@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
-from radar_core.report_utils import generate_summary_json
+from radar_core.models import Article, CategoryConfig
+from radar_core.report_utils import generate_report, generate_summary_json
 
 
 def test_generate_summary_json(tmp_path) -> None:
@@ -88,3 +89,95 @@ def test_generate_summary_json(tmp_path) -> None:
     assert no_entities_payload["top_entities"] == []
     assert no_entities_payload["matched_count"] == 0
     assert no_entities_payload["sources"] == {"YTN": 1, "MBC": 1}
+
+
+def test_generate_report(tmp_path, monkeypatch) -> None:
+    fixed_now = datetime(2024, 3, 15, 9, 30, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="game",
+        display_name="Game Radar",
+        sources=[],
+        entities=[],
+    )
+    articles = [
+        Article(
+            title="Zelda Launch",
+            link="https://example.com/zelda",
+            summary="Nintendo released a new Zelda trailer.",
+            published=fixed_now,
+            source="IGN",
+            category="game",
+            matched_entities={"Nintendo": ["nintendo", "zelda"]},
+            collected_at=fixed_now,
+        ),
+        Article(
+            title="Xbox Update",
+            link="https://example.com/xbox",
+            summary="Xbox announced spring update.",
+            published=None,
+            source="GameSpot",
+            category="game",
+            matched_entities={"Xbox": ["xbox"]},
+            collected_at=fixed_now,
+        ),
+    ]
+
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+    (report_dir / "game_20240314.html").write_text("prev", encoding="utf-8")
+    (report_dir / "game_20240316.html").write_text("next", encoding="utf-8")
+
+    output_path = report_dir / "game_report.html"
+    result_path = generate_report(
+        category=category,
+        articles=articles,
+        output_path=output_path,
+        stats={"sources": 2, "collected": 2, "matched": 2, "window_days": 7},
+        errors=["source timeout"],
+        plugin_charts={
+            "heatmap": {
+                "id": "entity-heatmap",
+                "title": "Entity Heatmap",
+                "config_json": "{}",
+            }
+        },
+    )
+
+    assert result_path == output_path
+    assert output_path.exists()
+
+    dated_copy = report_dir / "game_20240315.html"
+    assert dated_copy.exists()
+
+    report_html = output_path.read_text(encoding="utf-8")
+    assert "Game Radar" in report_html
+    assert "Zelda Launch" in report_html
+    assert "Entity Heatmap" in report_html
+    assert 'href="game_20240314.html"' in report_html
+    assert 'href="game_20240316.html"' in report_html
+    assert "source timeout" in report_html
+    assert "2024-03-15 09:30 UTC" in report_html
+    assert '"title": "Zelda Launch"' in report_html
+
+    summary_path = report_dir / "game_20240315_summary.json"
+    assert summary_path.exists()
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary_payload["category"] == "game"
+    assert summary_payload["article_count"] == 2
+    assert summary_payload["source_count"] == 2
+    assert summary_payload["matched_count"] == 2
+    assert summary_payload["sources"] == {"IGN": 1, "GameSpot": 1}
+    assert summary_payload["top_entities"] == [
+        {"name": "Nintendo", "count": 2},
+        {"name": "Xbox", "count": 1},
+    ]
