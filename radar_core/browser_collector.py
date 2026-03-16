@@ -145,7 +145,7 @@ class BrowserCollector:
         if not source_url:
             raise SourceError(source_name, "Missing source URL")
 
-        if source_type not in {"browser", "web", "html", "js"}:
+        if source_type not in {"browser", "web", "html", "js", "javascript"}:
             raise SourceError(source_name, f"Unsupported source type '{source_type}'")
 
         config = _source_config(source)
