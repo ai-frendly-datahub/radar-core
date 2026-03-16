@@ -6,6 +6,9 @@ from collected articles and statistics.
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -67,10 +70,10 @@ def generate_index_html(
 
 
 def generate_summary_json(
-    category: CategoryConfig,
-    articles: Iterable[Article],
+    category_name: str,
+    articles: list[dict],
     stats: dict[str, int],
-    output_path: Path,
+    output_dir: Path,
 ) -> Path:
     """Generate a JSON summary of articles and statistics.
 
@@ -78,10 +81,10 @@ def generate_summary_json(
     and collection statistics for programmatic access and archival.
 
     Args:
-        category: CategoryConfig object containing category metadata.
-        articles: Iterable of Article objects to summarize.
+        category_name: Category name to include in the summary and output filename.
+        articles: List of article dictionaries to summarize.
         stats: Dictionary of statistics to include in the summary.
-        output_path: Path where the summary JSON file will be written.
+        output_dir: Directory where the summary JSON file will be written.
 
     Returns:
         Path to the generated summary JSON file.
@@ -89,4 +92,55 @@ def generate_summary_json(
     Raises:
         IOError: If the output directory cannot be created or file cannot be written.
     """
-    ...
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_counts: Counter[str] = Counter()
+    entity_counts: Counter[str] = Counter()
+    matched_count = 0
+
+    for article in articles:
+        source = article.get("source")
+        if isinstance(source, str) and source:
+            source_counts[source] += 1
+
+        matched_entities = article.get("matched_entities")
+        if isinstance(matched_entities, list):
+            if matched_entities:
+                matched_count += 1
+            for entity_name in matched_entities:
+                if isinstance(entity_name, str) and entity_name:
+                    entity_counts[entity_name] += 1
+        elif isinstance(matched_entities, dict):
+            if matched_entities:
+                matched_count += 1
+            for entity_name, keywords in matched_entities.items():
+                if not isinstance(entity_name, str) or not entity_name:
+                    continue
+                if isinstance(keywords, list):
+                    entity_counts[entity_name] += len(keywords)
+                else:
+                    entity_counts[entity_name] += 1
+
+    now = datetime.now(timezone.utc).astimezone()
+    date_stamp = now.strftime("%Y%m%d")
+
+    summary = {
+        "date": now.date().isoformat(),
+        "category": category_name,
+        "article_count": int(stats.get("article_count", len(articles))),
+        "source_count": int(stats.get("source_count", len(source_counts))),
+        "matched_count": int(stats.get("matched_count", matched_count)),
+        "top_entities": [
+            {"name": name, "count": count}
+            for name, count in entity_counts.most_common(20)
+        ],
+        "sources": dict(source_counts),
+        "generated_at": now.isoformat(),
+    }
+
+    output_path = output_dir / f"{category_name}_{date_stamp}_summary.json"
+    output_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return output_path
