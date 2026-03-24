@@ -46,6 +46,29 @@ def cleanup_date_directories(
     return removed
 
 
+def cleanup_snapshots(
+    snapshot_root: Path, *, keep_days: int, today: date | None = None
+) -> int:
+    """Remove snapshot directories older than keep_days."""
+    if keep_days < 0 or not snapshot_root.exists():
+        return 0
+
+    cutoff = (today or datetime.now(UTC).date()) - timedelta(days=keep_days)
+    removed = 0
+    for child in snapshot_root.iterdir():
+        if not child.is_dir():
+            continue
+        try:
+            child_date = date.fromisoformat(child.name)
+        except ValueError:
+            continue
+
+        if child_date < cutoff:
+            shutil.rmtree(child)
+            removed += 1
+    return removed
+
+
 def cleanup_dated_reports(
     report_dir: Path, *, keep_days: int, today: date | None = None
 ) -> int:
@@ -85,12 +108,16 @@ def apply_date_storage_policy(
     keep_raw_days: int,
     keep_report_days: int,
     snapshot_db: bool,
+    keep_snapshot_days: int = 30,
 ) -> dict[str, object]:
     snapshot_path = snapshot_database(database_path) if snapshot_db else None
     raw_removed = cleanup_date_directories(raw_data_dir, keep_days=keep_raw_days)
     report_removed = cleanup_dated_reports(report_dir, keep_days=keep_report_days)
+    snapshot_root = database_path.parent / "snapshots"
+    snapshots_removed = cleanup_snapshots(snapshot_root, keep_days=keep_snapshot_days)
     return {
         "snapshot_path": str(snapshot_path) if snapshot_path is not None else None,
         "raw_removed": raw_removed,
         "report_removed": report_removed,
+        "snapshots_removed": snapshots_removed,
     }
