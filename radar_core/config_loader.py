@@ -19,9 +19,19 @@ from .models import (
 
 def _resolve_path(path_value: str, *, project_root: Path) -> Path:
     path = Path(path_value).expanduser()
+    if path_value.startswith(("/", "\\")):
+        return path
     if path.is_absolute():
         return path
     return (project_root / path).resolve()
+
+
+def _settings_project_root(config_file: Path, *, default_project_root: Path) -> Path:
+    if config_file.parent.name == "config":
+        return config_file.parent.parent
+    if config_file.is_relative_to(default_project_root):
+        return default_project_root
+    return config_file.parent
 
 
 def _read_yaml_dict(path: Path) -> dict[str, object]:
@@ -39,6 +49,31 @@ def _string_value(raw: dict[str, object], key: str, default: str) -> str:
     return default
 
 
+def _bool_value(raw: dict[str, object], key: str, default: bool) -> bool:
+    value = raw.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y"}:
+            return True
+        if lowered in {"false", "0", "no", "n"}:
+            return False
+    return default
+
+
+def _float_value(raw: dict[str, object], key: str, default: float) -> float:
+    value = raw.get(key)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
 def _dict_items(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
@@ -51,13 +86,38 @@ def _dict_items(value: object) -> list[dict[str, object]]:
     return items
 
 
+def _string_list_value(raw: dict[str, object], key: str) -> list[str]:
+    value = raw.get(key)
+    if isinstance(value, list):
+        values = cast(list[object], value)
+    elif isinstance(value, tuple | set):
+        values = list(cast(tuple[object, ...] | set[object], value))
+    elif isinstance(value, str) and value.strip():
+        values = [value]
+    else:
+        values = []
+    return [str(item).strip() for item in values if str(item).strip()]
+
+
+def _dict_value(raw: dict[str, object], key: str) -> dict[str, object]:
+    value = raw.get(key)
+    if isinstance(value, dict):
+        value_dict = cast(dict[object, object], _resolve_env_refs(value))
+        return {str(k): cast(object, v) for k, v in value_dict.items()}
+    return {}
+
+
 def load_settings(config_path: Path | None = None) -> RadarSettings:
-    project_root = Path(__file__).resolve().parent.parent
-    config_file = config_path or project_root / "config" / "config.yaml"
+    default_project_root = Path(__file__).resolve().parent.parent
+    config_file = config_path or default_project_root / "config" / "config.yaml"
+    config_file = config_file.expanduser().resolve()
 
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_file}")
 
+    project_root = _settings_project_root(
+        config_file, default_project_root=default_project_root
+    )
     raw = _read_yaml_dict(config_file)
     db_path = _resolve_path(
         _string_value(raw, "database_path", "data/radar_data.duckdb"),
@@ -112,10 +172,24 @@ def load_category_config(
 def _parse_source(entry: dict[str, object]) -> Source:
     if not entry:
         raise ValueError("Empty source entry in category config")
+    resolved = cast(dict[str, object], _resolve_env_refs(entry))
     return Source(
-        name=_string_value(entry, "name", "Unnamed Source"),
-        type=_string_value(entry, "type", "rss"),
-        url=_string_value(entry, "url", ""),
+        name=_string_value(resolved, "name", "Unnamed Source"),
+        type=_string_value(resolved, "type", "rss"),
+        url=_string_value(resolved, "url", ""),
+        id=_string_value(resolved, "id", ""),
+        enabled=_bool_value(resolved, "enabled", True),
+        language=_string_value(resolved, "language", ""),
+        country=_string_value(resolved, "country", ""),
+        region=_string_value(resolved, "region", ""),
+        trust_tier=_string_value(resolved, "trust_tier", "T3_professional"),
+        weight=_float_value(resolved, "weight", 1.0),
+        content_type=_string_value(resolved, "content_type", "news"),
+        collection_tier=_string_value(resolved, "collection_tier", "C1_rss"),
+        producer_role=_string_value(resolved, "producer_role", ""),
+        info_purpose=_string_list_value(resolved, "info_purpose"),
+        notes=_string_value(resolved, "notes", ""),
+        config=_dict_value(resolved, "config"),
     )
 
 

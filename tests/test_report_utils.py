@@ -236,7 +236,10 @@ def test_generate_report(tmp_path, monkeypatch) -> None:
     assert 'href="game_20240316.html"' in report_html
     assert "source timeout" in report_html
     assert "2024-03-15 09:30 UTC" in report_html
+    assert 'data-visual-system="radar-unified-v2"' in report_html
+    assert 'data-visual-surface="report"' in report_html
     assert '"title": "Zelda Launch"' in report_html
+    assert all(line.rstrip() == line for line in report_html.splitlines())
 
     summary_path = report_dir / "game_20240315_summary.json"
     assert summary_path.exists()
@@ -302,6 +305,8 @@ def test_generate_index_html(tmp_path) -> None:
 
     rendered = index_path.read_text(encoding="utf-8")
     assert "Unified Radar" in rendered
+    assert 'data-visual-system="radar-unified-v2"' in rendered
+    assert 'data-visual-surface="index"' in rendered
     assert "game_20260315.html" in rendered
     assert "policy_20260314.html" in rendered
     assert "2026-03-16/index.html" in rendered

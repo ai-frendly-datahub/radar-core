@@ -149,6 +149,7 @@ def generate_report(
         prev_report=prev_report if prev_report is not None else scanned_prev,
         next_report=next_report if next_report is not None else scanned_next,
     )
+    rendered = "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n"
 
     output_path.write_text(rendered, encoding="utf-8")
     dated_path.write_text(rendered, encoding="utf-8")
@@ -242,6 +243,7 @@ def generate_index_html(
 
     for advanced_index in report_dir.glob("*/index.html"):
         relative_path = advanced_index.relative_to(report_dir)
+        relative_filename = relative_path.as_posix()
         parent_name = advanced_index.parent.name
         if not advanced_pattern.match(parent_name):
             continue
@@ -249,9 +251,9 @@ def generate_index_html(
         report_entries.append(
             (
                 parent_name,
-                str(relative_path),
+                relative_filename,
                 {
-                    "filename": str(relative_path),
+                    "filename": relative_filename,
                     "display_name": parent_name,
                     "date": parent_name,
                     "date_label": parent_name,
@@ -272,6 +274,7 @@ def generate_index_html(
         summaries_json=json.dumps(summaries, ensure_ascii=False),
         generated_at=datetime.now(timezone.utc),
     )
+    rendered = "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n"
 
     index_path = report_dir / "index.html"
     index_path.write_text(rendered, encoding="utf-8")

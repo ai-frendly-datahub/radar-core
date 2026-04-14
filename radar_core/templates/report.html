@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-visual-system="radar-unified-v2" data-visual-surface="report">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -15,24 +15,24 @@
 
     <style>
       :root{
-        --bg0:#05070c;
-        --bg1:#070b14;
-        --panel0:rgba(10, 16, 30, .72);
-        --panel1:rgba(14, 22, 42, .72);
-        --panel2:rgba(14, 22, 42, .92);
-        --line:rgba(150, 190, 255, .14);
-        --line2:rgba(150, 190, 255, .22);
+        --bg0:#0b0b0f;
+        --bg1:#121116;
+        --panel0:rgba(24, 22, 29, .74);
+        --panel1:rgba(28, 26, 34, .74);
+        --panel2:rgba(28, 26, 34, .92);
+        --line:rgba(244, 244, 247, .14);
+        --line2:rgba(244, 244, 247, .22);
         --shadow:0 18px 60px rgba(0,0,0,.44);
         --text:#e9eefb;
         --muted:rgba(233, 238, 251, .72);
         --faint:rgba(233, 238, 251, .52);
         --brand:#33d6c5;
-        --brand2:#19a7c3;
+        --brand2:#19b591;
         --accent:#f6c84c;
         --danger:#ff5b6e;
 
-        --radius:16px;
-        --radius2:22px;
+        --radius:8px;
+        --radius2:8px;
         --max:1180px;
 
         --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -47,11 +47,7 @@
         margin:0;
         font-family:var(--sans);
         color:var(--text);
-        background:
-          radial-gradient(1200px 700px at 18% -8%, rgba(25,167,195,.28), transparent 58%),
-          radial-gradient(1100px 600px at 92% 8%, rgba(246,200,76,.18), transparent 60%),
-          radial-gradient(900px 520px at 52% 110%, rgba(51,214,197,.18), transparent 62%),
-          linear-gradient(180deg, var(--bg0), var(--bg1) 55%, #04060a);
+        background: linear-gradient(180deg, var(--bg0), var(--bg1) 58%, #08080b);
         overflow-x:hidden;
       }
 
@@ -63,7 +59,7 @@
         left:-999px;
         top:12px;
         padding:10px 12px;
-        border-radius:12px;
+        border-radius:8px;
         background:rgba(14, 22, 42, .98);
         border:1px solid var(--line2);
         color:var(--text);
@@ -178,18 +174,7 @@
         position:relative;
         overflow:hidden;
       }
-      .hero-card:before{
-        content:"";
-        position:absolute;
-        inset:-2px;
-        background:
-          radial-gradient(280px 160px at 12% 18%, rgba(51,214,197,.18), transparent 60%),
-          radial-gradient(240px 140px at 82% 22%, rgba(246,200,76,.12), transparent 58%),
-          radial-gradient(300px 170px at 46% 110%, rgba(25,167,195,.14), transparent 62%);
-        filter: blur(10px);
-        opacity:.9;
-        pointer-events:none;
-      }
+      .hero-card:before{content:none}
       .hero-body{position:relative}
       .kicker{
         display:inline-flex; align-items:center; gap:10px;
@@ -249,7 +234,7 @@
         gap:12px;
       }
       .stat{
-        border-radius: 14px;
+        border-radius: 8px;
         background: rgba(14,22,42,.45);
         border: 1px solid rgba(150,190,255,.12);
         padding:12px 12px 10px;
@@ -446,7 +431,7 @@
         gap:10px;
       }
       .card{
-        border-radius: 18px;
+        border-radius: 8px;
         background: rgba(14,22,42,.46);
         border: 1px solid rgba(150,190,255,.12);
         padding: 12px 12px 11px;
@@ -515,7 +500,7 @@
         justify-content:center;
         gap:10px;
         padding:10px 12px;
-        border-radius: 14px;
+        border-radius: 8px;
         border: 1px solid rgba(150,190,255,.14);
         background: rgba(10,16,30,.46);
         color: rgba(233,238,251,.86);
@@ -620,14 +605,14 @@
         </div>
 
         <nav class="report-navigation" aria-label="Day navigation">
-          <a href="{{ prev_report if prev_report else '#' }}" 
-             class="nav-button" 
+          <a href="{{ prev_report if prev_report else '#' }}"
+             class="nav-button"
              {% if not prev_report %}disabled aria-disabled="true"{% endif %}
              aria-label="Previous day report">
             <span>&larr;</span> Previous Day
           </a>
-          <a href="{{ next_report if next_report else '#' }}" 
-             class="nav-button" 
+          <a href="{{ next_report if next_report else '#' }}"
+             class="nav-button"
              {% if not next_report %}disabled aria-disabled="true"{% endif %}
              aria-label="Next day report">
             Next Day <span>&rarr;</span>
@@ -954,7 +939,7 @@
 
       <script id="articles-data" type="application/json">{{ articles_json|tojson }}</script>
       <script id="entities-data" type="application/json">{{ entity_counts|tojson if entity_counts else '{}' }}</script>
-      
+
       {# Chart.js: local first, CDN fallback #}
       <script src="static/chart.min.js"></script>
       <script>
