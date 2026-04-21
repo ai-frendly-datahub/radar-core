@@ -11,6 +11,7 @@ Fallback Chain:
 
 from __future__ import annotations
 
+import html
 import re
 import time
 from abc import ABC, abstractmethod
@@ -257,8 +258,6 @@ class Html2TextExtractor(URLExtractor):
         start_time = time.monotonic()
 
         try:
-            import html2text
-
             # Fetch the URL
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -269,12 +268,7 @@ class Html2TextExtractor(URLExtractor):
             response.raise_for_status()
 
             # Convert HTML to markdown
-            h = html2text.HTML2Text()
-            h.ignore_links = False
-            h.ignore_images = False
-            h.body_width = 0  # No line wrapping
-
-            content = h.handle(response.text)
+            content = self._convert_html(response.text)
             extraction_time = time.monotonic() - start_time
 
             # Try to extract title from HTML
@@ -290,11 +284,41 @@ class Html2TextExtractor(URLExtractor):
                     "content_length": len(content),
                 },
             )
-        except ImportError:
-            # html2text not installed
-            return None
         except Exception:
             return None
+
+    def _convert_html(self, raw_html: str) -> str:
+        """Convert HTML to markdown-like text without requiring optional deps."""
+        try:
+            import html2text
+
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.ignore_images = False
+            h.body_width = 0  # No line wrapping
+            return h.handle(raw_html)
+        except ImportError:
+            return self._fallback_text_from_html(raw_html)
+
+    def _fallback_text_from_html(self, raw_html: str) -> str:
+        """Best-effort HTML to text conversion using the standard library only."""
+        cleaned = re.sub(
+            r"<(script|style)[^>]*>.*?</\1>",
+            "",
+            raw_html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        cleaned = re.sub(
+            r"</?(p|div|section|article|li|ul|ol|h[1-6]|br|tr|td|th)[^>]*>",
+            "\n",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"<[^>]+>", "", cleaned)
+        cleaned = html.unescape(cleaned)
+        cleaned = re.sub(r"\r\n?", "\n", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
 
     def _extract_title_from_html(self, html: str, fallback: str) -> str:
         """Extract title from HTML <title> tag."""
