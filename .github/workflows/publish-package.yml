@@ -2,6 +2,12 @@ name: Publish radar-core package
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_to_packages:
+        description: "Publish the built package to GitHub Packages"
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -33,6 +39,9 @@ jobs:
       - name: Build package
         run: python -m build
 
+      - name: Validate distributions
+        run: python -m twine check dist/*
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -40,6 +49,7 @@ jobs:
           path: dist/
 
       - name: Publish to GitHub Packages
+        if: ${{ github.event_name == 'push' || inputs.publish_to_packages }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -47,3 +57,8 @@ jobs:
           python -m twine upload \
             --repository-url https://upload.pypi.pkg.github.com/${{ github.repository_owner }} \
             dist/*
+
+      - name: Summarize dry run
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_to_packages }}
+        run: |
+          echo "Dry run completed: package was built, validated, and archived without publishing."
