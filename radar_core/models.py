@@ -78,6 +78,7 @@ class Article:
     category: str
     matched_entities: dict[str, list[str]] = field(default_factory=dict)
     collected_at: datetime | None = None
+    ontology: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

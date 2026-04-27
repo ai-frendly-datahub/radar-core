@@ -30,6 +30,13 @@ from .models import (
     TelegramSettings,
     WebhookConfig,
 )
+from .ontology import (
+    annotate_articles_with_ontology,
+    backfill_duckdb_ontology,
+    build_article_ontology_metadata,
+    build_summary_ontology_metadata,
+    load_runtime_contract,
+)
 from .nl_query import ParsedQuery, parse_query
 from .notifier import (
     CompositeNotifier,
@@ -61,6 +68,10 @@ __all__ = [
     "AdaptiveThrottler",
     "apply_entity_rules",
     "Article",
+    "annotate_articles_with_ontology",
+    "backfill_duckdb_ontology",
+    "build_article_ontology_metadata",
+    "build_summary_ontology_metadata",
     "CategoryConfig",
     "CompositeNotifier",
     "configure_logging",
@@ -110,6 +121,7 @@ __all__ = [
     "TrafilaturaExtractor",
     "URLExtractor",
     "URLExtractorChain",
+    "load_runtime_contract",
     "WebhookConfig",
     "WebhookNotifier",
 ]

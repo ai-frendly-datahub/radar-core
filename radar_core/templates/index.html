@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-visual-system="radar-unified-v2" data-visual-surface="index">
+<html lang="en" data-visual-system="radar-unified-v2" data-visual-surface="report" data-visual-page="index">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,30 +24,50 @@
        DESIGN SYSTEM: Dark Theme Variables
        ============================================ #}
     :root {
+      --vs-bg-0: #0b0b0f;
+      --vs-bg-1: #121116;
+      --vs-surface-0: rgba(28, 26, 34, 0.85);
+      --vs-surface-1: rgba(36, 33, 43, 0.95);
+      --vs-surface-alt: rgba(24, 22, 29, 0.72);
+      --vs-text: #e4e6eb;
+      --vs-text-muted: #b0b3b8;
+      --vs-text-faint: rgba(233, 238, 251, 0.52);
+      --vs-line: rgba(244, 244, 247, 0.14);
+      --vs-line-strong: rgba(244, 244, 247, 0.22);
+      --vs-brand: #33d6c5;
+      --vs-brand-strong: #f6c84c;
+      --vs-danger: #ff5b6e;
+      --vs-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
+      --vs-shadow-glow: 0 0 40px rgba(51, 214, 197, 0.12);
+      --vs-font-sans: "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --vs-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --vs-radius: 10px;
+      --vs-max: 1280px;
+
       {# Background colors #}
-      --bg-primary: #0b0b0f;
-      --bg-secondary: #121116;
-      --bg-card: rgba(28, 26, 34, 0.85);
-      --bg-card-hover: rgba(36, 33, 43, 0.95);
-      --bg-glass: rgba(24, 22, 29, 0.72);
+      --bg-primary: var(--vs-bg-0);
+      --bg-secondary: var(--vs-bg-1);
+      --bg-card: var(--vs-surface-0);
+      --bg-card-hover: var(--vs-surface-1);
+      --bg-glass: var(--vs-surface-alt);
 
       {# Text colors #}
-      --text-primary: #e4e6eb;
-      --text-secondary: #b0b3b8;
+      --text-primary: var(--vs-text);
+      --text-secondary: var(--vs-text-muted);
       --text-muted: #6b7280;
-      --text-faint: rgba(233, 238, 251, 0.52);
+      --text-faint: var(--vs-text-faint);
 
       {# Accent colors #}
-      --accent-primary: #33d6c5;
-      --accent-secondary: #f6c84c;
-      --accent-highlight: #f6c84c;
-      --accent-danger: #ff5b6e;
+      --accent-primary: var(--vs-brand);
+      --accent-secondary: var(--vs-brand-strong);
+      --accent-highlight: var(--vs-brand-strong);
+      --accent-danger: var(--vs-danger);
 
       {# Border & shadows #}
-      --border-color: rgba(244, 244, 247, 0.14);
-      --border-highlight: rgba(244, 244, 247, 0.22);
-      --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.28);
-      --shadow-glow: 0 0 40px rgba(51, 214, 197, 0.12);
+      --border-color: var(--vs-line);
+      --border-highlight: var(--vs-line-strong);
+      --shadow-soft: var(--vs-shadow);
+      --shadow-glow: var(--vs-shadow-glow);
 
       {# Spacing scale (8px base) #}
       --space-1: 0.25rem;
@@ -62,20 +82,20 @@
 
       {# Border radius #}
       --radius-sm: 6px;
-      --radius-md: 10px;
+      --radius-md: var(--vs-radius);
       --radius-lg: 8px;
       --radius-xl: 8px;
 
       {# Typography #}
-      --font-sans: "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --font-sans: var(--vs-font-sans);
+      --font-mono: var(--vs-font-mono);
 
       {# Transitions #}
       --transition-fast: 0.15s ease-out;
       --transition-normal: 0.25s ease-out;
 
       {# Layout #}
-      --max-width: 1280px;
+      --max-width: var(--vs-max);
     }
 
     {# ============================================

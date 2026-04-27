@@ -106,6 +106,12 @@ def test_generate_summary_json(tmp_path) -> None:
         articles=articles,
         stats={"article_count": 42, "source_count": 8, "matched_count": 35},
         output_dir=output_dir,
+        ontology_metadata={
+            "repo": "GameRadar",
+            "ontology_version": "0.1.0",
+            "event_model_ids": ["media.box_office", "media.release_calendar"],
+            "source_role_mappings": {"Steam News": "context_only"},
+        },
     )
 
     assert result_path.exists()
@@ -134,6 +140,12 @@ def test_generate_summary_json(tmp_path) -> None:
         key=lambda entity: entity["count"],
         reverse=True,
     )
+    assert payload["ontology"] == {
+        "repo": "GameRadar",
+        "ontology_version": "0.1.0",
+        "event_model_ids": ["media.box_office", "media.release_calendar"],
+        "source_role_mappings": {"Steam News": "context_only"},
+    }
 
     empty_path = generate_summary_json(
         category_name="game",
@@ -255,6 +267,52 @@ def test_generate_report(tmp_path, monkeypatch) -> None:
     ]
 
 
+def test_generate_report_embeds_ontology_metadata_in_summary(tmp_path, monkeypatch) -> None:
+    fixed_now = datetime(2024, 3, 15, 9, 30, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="game",
+        display_name="Game Radar",
+        sources=[],
+        entities=[],
+    )
+    output_path = tmp_path / "reports" / "game_report.html"
+
+    generate_report(
+        category=category,
+        articles=[],
+        output_path=output_path,
+        stats={"sources": 0, "collected": 0, "matched": 0, "window_days": 7},
+        ontology_metadata={
+            "repo": "GameRadar",
+            "category": "game",
+            "ontology_version": "0.1.0",
+            "event_model_ids": ["media.box_office"],
+            "source_role_ids": ["context_only"],
+        },
+    )
+
+    summary_payload = json.loads(
+        (tmp_path / "reports" / "game_20240315_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary_payload["ontology"] == {
+        "repo": "GameRadar",
+        "category": "game",
+        "ontology_version": "0.1.0",
+        "event_model_ids": ["media.box_office"],
+        "source_role_ids": ["context_only"],
+    }
+
+
 def test_generate_index_html(tmp_path) -> None:
     report_dir = tmp_path / "reports"
     report_dir.mkdir(parents=True)
@@ -306,7 +364,8 @@ def test_generate_index_html(tmp_path) -> None:
     rendered = index_path.read_text(encoding="utf-8")
     assert "Unified Radar" in rendered
     assert 'data-visual-system="radar-unified-v2"' in rendered
-    assert 'data-visual-surface="index"' in rendered
+    assert 'data-visual-surface="report"' in rendered
+    assert 'data-visual-page="index"' in rendered
     assert "game_20260315.html" in rendered
     assert "policy_20260314.html" in rendered
     assert "2026-03-16/index.html" in rendered

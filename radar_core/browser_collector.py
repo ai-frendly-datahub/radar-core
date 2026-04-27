@@ -8,6 +8,7 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote, urljoin
 
 from pybreaker import CircuitBreakerError
 
@@ -80,7 +81,11 @@ class BrowserCollector:
                 try:
                     for source in sources:
                         source_name = _source_string(source, "name", "unknown")
-                        if self._health_store.is_disabled(source_name):
+                        config = _source_config(source)
+                        if (
+                            not _source_bool(config, "bypass_crawl_health")
+                            and self._health_store.is_disabled(source_name)
+                        ):
                             errors.append(
                                 f"{source_name}: Source disabled (crawl health threshold reached)"
                             )
@@ -150,7 +155,10 @@ class BrowserCollector:
 
         config = _source_config(source)
         timeout_ms = _source_int(config, "timeout", self._default_timeout)
+        navigation_retries = _source_positive_int(config, "navigation_retries", 1, max_value=5)
+        navigation_retry_delay_ms = _source_int(config, "navigation_retry_delay_ms", 1_000)
         wait_for_selector = _source_optional_string(config, "wait_for")
+        fallback_wait_for_selector = _source_optional_string(config, "fallback_wait_for")
         content_selector = _source_optional_string(config, "content_selector")
         title_selector = _source_optional_string(config, "title_selector")
         link_selector = _source_optional_string(config, "link_selector")
@@ -159,15 +167,26 @@ class BrowserCollector:
         page.set_default_timeout(timeout_ms)
 
         try:
-            _ = page.goto(source_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            _goto_with_retries(
+                page,
+                source_url,
+                timeout_ms=timeout_ms,
+                retries=navigation_retries,
+                retry_delay_ms=navigation_retry_delay_ms,
+            )
             _dismiss_cookie_banner(page)
 
             if wait_for_selector:
-                page.wait_for_selector(wait_for_selector, timeout=timeout_ms)
+                _wait_for_selector_with_fallback(
+                    page,
+                    wait_for_selector,
+                    fallback_wait_for_selector,
+                    timeout_ms,
+                )
 
             extraction_page = _resolve_naver_frame(page)
             encoding = _detect_page_encoding(extraction_page)
-            page_html = extraction_page.content()
+            page_html = _safe_page_content(extraction_page)
             summary = _extract_summary(
                 extraction_page, content_selector, page_html, encoding
             )
@@ -181,6 +200,8 @@ class BrowserCollector:
                 fallback_summary=summary,
                 fallback_link=source_url,
                 link_selector=link_selector,
+                config=config,
+                timeout_ms=timeout_ms,
             )
             if items:
                 return items
@@ -246,6 +267,58 @@ def _source_int(config: Mapping[str, Any], key: str, default: int) -> int:
     return max(1_000, default)
 
 
+def _source_positive_int(
+    config: Mapping[str, Any],
+    key: str,
+    default: int,
+    *,
+    max_value: int | None = None,
+) -> int:
+    value = config.get(key)
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        stripped = value.strip()
+        parsed = int(stripped) if stripped.isdigit() else default
+    else:
+        parsed = default
+    parsed = max(1, parsed)
+    if max_value is not None:
+        parsed = min(parsed, max_value)
+    return parsed
+
+
+def _source_bool(config: Mapping[str, Any], key: str) -> bool:
+    value = config.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
+
+
+def _goto_with_retries(
+    page: Any,
+    url: str,
+    *,
+    timeout_ms: int,
+    retries: int,
+    retry_delay_ms: int,
+) -> Any:
+    last_exc: Exception | None = None
+    for attempt in range(max(1, retries)):
+        try:
+            return page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= retries - 1:
+                break
+            time.sleep(retry_delay_ms / 1000)
+    if last_exc is not None:
+        raise last_exc
+    return None
+
+
 def _dismiss_cookie_banner(page: Any) -> None:
     for selector in _COOKIE_SELECTORS:
         try:
@@ -258,6 +331,22 @@ def _dismiss_cookie_banner(page: Any) -> None:
                 return
         except Exception:
             continue
+
+
+def _wait_for_selector_with_fallback(
+    page: Any,
+    selector: str,
+    fallback_selector: str | None,
+    timeout_ms: int,
+) -> None:
+    try:
+        page.wait_for_selector(selector, timeout=timeout_ms)
+        return
+    except Exception:
+        if not fallback_selector:
+            raise
+
+    page.wait_for_selector(fallback_selector, timeout=timeout_ms, state="attached")
 
 
 def _resolve_naver_frame(page: Any) -> Any:
@@ -303,6 +392,15 @@ def _detect_page_encoding(page: Any) -> str:
     if re.search(r"charset\s*=\s*['\"]?(euc-kr|ks_c_5601-1987|cp949)", html_text):
         return "euc-kr"
     return detected
+
+
+def _safe_page_content(page: Any) -> str:
+    for _ in range(3):
+        try:
+            return page.content()
+        except Exception:
+            time.sleep(0.2)
+    return ""
 
 
 def _extract_title(page: Any, selector: str | None) -> str:
@@ -374,6 +472,8 @@ def _extract_articles_from_links(
     fallback_summary: str,
     fallback_link: str,
     link_selector: str | None,
+    config: Mapping[str, Any],
+    timeout_ms: int | None = None,
 ) -> list[Article]:
     if not link_selector:
         return []
@@ -385,32 +485,53 @@ def _extract_articles_from_links(
             (nodes) => nodes
                 .map((node) => {
                     const href = node.getAttribute('href') || '';
+                    const onclick = node.getAttribute('onclick') || '';
                     const text = (node.textContent || '').trim();
-                    return { href, text };
+                    return { href, onclick, text };
                 })
-                .filter((item) => item.href)
+                .filter((item) => item.href || item.onclick)
             """,
         )
     except Exception:
         return []
 
+    fetch_detail = _source_bool(config, "fetch_detail")
+    detail_limit = _source_positive_int(config, "detail_limit", 5, max_value=30)
+    detail_timeout_ms = _source_int(config, "detail_timeout", min(timeout_ms or 8_000, 8_000))
+
     items: list[Article] = []
     for entry in links[:30]:
         href = entry.get("href", "").strip()
+        onclick = entry.get("onclick", "").strip()
         text = entry.get("text", "").strip()
-        if not href:
+        link = ""
+        if onclick and _is_placeholder_href(href):
+            link = _resolve_javascript_link(onclick, config)
+        if not link:
+            link = _resolve_article_link(href, fallback_link, config)
+        if not link and onclick:
+            link = _resolve_javascript_link(onclick, config)
+        if not link:
             continue
 
-        items.append(
-            Article(
-                title=html.unescape(text or fallback_title),
-                link=href,
-                summary=fallback_summary,
-                published=datetime.now(UTC),
-                source=source_name,
-                category=category,
-            )
+        article = Article(
+            title=html.unescape(text or fallback_title),
+            link=link,
+            summary=html.unescape(text or fallback_summary),
+            published=datetime.now(UTC),
+            source=source_name,
+            category=category,
         )
+
+        if fetch_detail and len(items) < detail_limit:
+            article = _enrich_article_from_detail(
+                extraction_page=extraction_page,
+                article=article,
+                timeout_ms=detail_timeout_ms,
+                config=config,
+            )
+
+        items.append(article)
 
     if not items and fallback_link:
         return [
@@ -424,3 +545,116 @@ def _extract_articles_from_links(
             )
         ]
     return items
+
+
+def _enrich_article_from_detail(
+    *,
+    extraction_page: Any,
+    article: Article,
+    timeout_ms: int,
+    config: Mapping[str, Any],
+) -> Article:
+    context = getattr(extraction_page, "context", None)
+    if context is None:
+        return article
+
+    try:
+        page = context.new_page()
+    except Exception:
+        return article
+
+    try:
+        _goto_with_retries(
+            page,
+            article.link,
+            timeout_ms=timeout_ms,
+            retries=_source_positive_int(config, "detail_navigation_retries", 1, max_value=3),
+            retry_delay_ms=_source_int(config, "detail_navigation_retry_delay_ms", 1_000),
+        )
+        detail_wait_for = _source_optional_string(config, "detail_wait_for")
+        if detail_wait_for:
+            _wait_for_selector_with_fallback(
+                page,
+                detail_wait_for,
+                _source_optional_string(config, "detail_fallback_wait_for"),
+                timeout_ms,
+            )
+
+        detail_title_selector = _source_optional_string(config, "detail_title_selector")
+        title = article.title
+        if detail_title_selector:
+            extracted_title = _extract_title(page, detail_title_selector)
+            if extracted_title != "(no title)":
+                title = extracted_title
+        summary = _extract_summary(
+            page,
+            _source_optional_string(config, "detail_content_selector"),
+            _safe_page_content(page),
+            _detect_page_encoding(page),
+        )
+        return Article(
+            title=title,
+            link=article.link,
+            summary=summary or article.summary,
+            published=article.published,
+            source=article.source,
+            category=article.category,
+        )
+    except Exception:
+        return article
+    finally:
+        page.close()
+
+
+def _resolve_article_link(
+    href: str,
+    fallback_link: str,
+    config: Mapping[str, Any],
+) -> str:
+    if not href:
+        return ""
+
+    lowered = href.lower()
+    if lowered.startswith("javascript:"):
+        return _resolve_javascript_link(href, config)
+    if lowered.startswith(("mailto:", "tel:")):
+        return ""
+    return urljoin(fallback_link, href)
+
+
+def _is_placeholder_href(href: str) -> bool:
+    lowered = href.strip().lower()
+    return lowered in {
+        "",
+        "#",
+        "#view",
+        "javascript:;",
+        "javascript:void(0);",
+        "javascript:void(0)",
+    }
+
+
+def _resolve_javascript_link(href: str, config: Mapping[str, Any]) -> str:
+    templates = config.get("javascript_link_templates")
+    if not isinstance(templates, Mapping):
+        return ""
+
+    match = re.match(r"\s*(?:javascript:\s*)?([A-Za-z_$][\w$]*)\((.*?)\)\s*;?", href)
+    if not match:
+        return ""
+
+    function_name = match.group(1)
+    template = templates.get(function_name)
+    if not isinstance(template, str) or not template:
+        return ""
+
+    raw_args = re.findall(r"""['"]([^'"]*)['"]|([^,\s()]+)""", match.group(2))
+    args = [quoted or bare for quoted, bare in raw_args]
+    if not args:
+        return ""
+
+    encoded_args = [quote(arg, safe="") for arg in args]
+    try:
+        return template.format(*encoded_args, id=encoded_args[0], arg0=encoded_args[0])
+    except (IndexError, KeyError, ValueError):
+        return ""

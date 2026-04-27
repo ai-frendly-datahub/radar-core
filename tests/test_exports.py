@@ -55,6 +55,10 @@ def test_all_exports_match_public_api() -> None:
         "AdaptiveThrottler",
         "apply_entity_rules",
         "Article",
+        "annotate_articles_with_ontology",
+        "backfill_duckdb_ontology",
+        "build_article_ontology_metadata",
+        "build_summary_ontology_metadata",
         "CategoryConfig",
         "CompositeNotifier",
         "configure_logging",
@@ -104,6 +108,7 @@ def test_all_exports_match_public_api() -> None:
         "TrafilaturaExtractor",
         "URLExtractor",
         "URLExtractorChain",
+        "load_runtime_contract",
         "WebhookConfig",
         "WebhookNotifier",
     }

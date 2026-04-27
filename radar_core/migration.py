@@ -81,9 +81,23 @@ def _migration_v002_crawl_health(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def _migration_v003_article_ontology(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _table_exists(conn, "articles"):
+        return
+
+    table_info_rows = cast(
+        list[tuple[object, ...]],
+        conn.execute("PRAGMA table_info('articles')").fetchall(),
+    )
+    columns = {str(row[1]) for row in table_info_rows}
+    if "ontology_json" not in columns:
+        _ = conn.execute("ALTER TABLE articles ADD COLUMN ontology_json TEXT")
+
+
 _MIGRATIONS: tuple[tuple[str, MigrationFn], ...] = (
     ("v001_lineage_columns", _migration_v001_lineage_columns),
     ("v002_crawl_health", _migration_v002_crawl_health),
+    ("v003_article_ontology", _migration_v003_article_ontology),
 )
 
 
@@ -97,6 +111,7 @@ def _repair_schema(conn: duckdb.DuckDBPyConnection) -> None:
     if not _table_exists(conn, "articles"):
         return
     _migration_v001_lineage_columns(conn)
+    _migration_v003_article_ontology(conn)
 
 
 def migrate(conn: duckdb.DuckDBPyConnection) -> list[str]:

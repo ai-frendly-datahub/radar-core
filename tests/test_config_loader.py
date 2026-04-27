@@ -69,6 +69,27 @@ def test_load_settings_defaults_for_missing_keys(tmp_path: Path) -> None:
     assert settings.report_dir is not None
 
 
+def test_load_settings_resolves_repo_local_config_paths(tmp_path: Path) -> None:
+    """repo/config/config.yaml의 상대 경로는 repo root 기준으로 해석한다."""
+    repo_root = tmp_path / "GovRadar"
+    config_file = _write_yaml(
+        repo_root / "config" / "config.yaml",
+        {
+            "database_path": "data/govradar_data.duckdb",
+            "report_dir": "reports",
+            "raw_data_dir": "data/raw",
+            "search_db_path": "data/search_index.db",
+        },
+    )
+
+    settings = load_settings(config_file)
+
+    assert settings.database_path == (repo_root / "data/govradar_data.duckdb").resolve()
+    assert settings.report_dir == (repo_root / "reports").resolve()
+    assert settings.raw_data_dir == (repo_root / "data/raw").resolve()
+    assert settings.search_db_path == (repo_root / "data/search_index.db").resolve()
+
+
 # ── load_category_config ──────────────────────────────────────────────────
 
 
@@ -118,6 +139,58 @@ def test_load_category_config_uses_name_as_display_fallback(tmp_path: Path) -> N
     config = load_category_config("tech", categories_dir=cat_dir)
 
     assert config.display_name == "tech"  # fallback to category_name arg
+
+
+def test_load_category_config_preserves_source_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """소스 메타데이터와 env 치환이 Source 모델에 보존된다."""
+    monkeypatch.setenv("TEST_API_KEY", "secret-token")
+    cat_dir = tmp_path / "categories"
+    _write_yaml(
+        cat_dir / "policy.yaml",
+        {
+            "category_name": "policy",
+            "sources": [
+                {
+                    "name": "Gov Source",
+                    "type": "javascript",
+                    "url": "https://example.com/policy",
+                    "enabled": False,
+                    "language": "ko",
+                    "country": "KR",
+                    "trust_tier": "T1_authoritative",
+                    "weight": 2.5,
+                    "content_type": "announcement",
+                    "collection_tier": "C3_javascript",
+                    "producer_role": "government",
+                    "info_purpose": ["deadline", "eligibility"],
+                    "notes": "catalog source",
+                    "config": {
+                        "wait_for": ".board-list",
+                        "api_key": "${TEST_API_KEY}",
+                    },
+                }
+            ],
+            "entities": [],
+        },
+    )
+
+    config = load_category_config("policy", categories_dir=cat_dir)
+    source = config.sources[0]
+
+    assert source.type == "javascript"
+    assert source.enabled is False
+    assert source.language == "ko"
+    assert source.country == "KR"
+    assert source.trust_tier == "T1_authoritative"
+    assert source.weight == 2.5
+    assert source.collection_tier == "C3_javascript"
+    assert source.producer_role == "government"
+    assert source.info_purpose == ["deadline", "eligibility"]
+    assert source.notes == "catalog source"
+    assert source.config["wait_for"] == ".board-list"
+    assert source.config["api_key"] == "secret-token"
 
 
 # ── load_notification_config ──────────────────────────────────────────────

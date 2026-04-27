@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from radar_core.collector import RateLimiter, collect_sources
+from radar_core.crawl_health import CrawlHealthStore
 from radar_core.exceptions import NetworkError, SourceError
 from radar_core.models import Article, Source
 
@@ -218,3 +219,113 @@ def test_max_workers_is_capped_and_validated(
         mock_executor.assert_not_called()
     else:
         mock_executor.assert_called_once_with(max_workers=expected_workers)
+
+
+def test_collect_sources_routes_browser_reddit_and_unsupported_types() -> None:
+    sources = [
+        Source(name="rss", type="rss", url="https://example.com/feed"),
+        Source(
+            name="browser",
+            type="javascript",
+            url="https://example.com/board",
+            config={"wait_for": ".board"},
+        ),
+        Source(name="reddit", type="reddit", url="https://www.reddit.com/r/test/"),
+        Source(name="catalog", type="mcp", url="https://github.com/example/mcp"),
+        Source(
+            name="disabled",
+            type="rss",
+            url="https://disabled.example.com/feed",
+            enabled=False,
+        ),
+    ]
+    manager = _pass_through_manager()
+
+    rss_article = Article(
+        title="rss-article",
+        link="https://example.com/rss-article",
+        summary="rss",
+        published=None,
+        source="rss",
+        category="test",
+    )
+    browser_article = Article(
+        title="browser-article",
+        link="https://example.com/browser-article",
+        summary="browser",
+        published=None,
+        source="browser",
+        category="test",
+    )
+    reddit_article = Article(
+        title="reddit-article",
+        link="https://example.com/reddit-article",
+        summary="reddit",
+        published=None,
+        source="reddit",
+        category="test",
+    )
+
+    with (
+        patch("radar_core.collector._collect_single", return_value=[rss_article]) as mock_rss,
+        patch(
+            "radar_core.collector._collect_browser_pass",
+            return_value=([browser_article], []),
+        ) as mock_browser,
+        patch(
+            "radar_core.collector._collect_reddit_pass",
+            return_value=([reddit_article], []),
+        ) as mock_reddit,
+        patch("radar_core.collector.get_circuit_breaker_manager", return_value=manager),
+    ):
+        articles, errors = collect_sources(
+            sources,
+            category="test",
+            min_interval_per_host=0.0,
+            max_workers=1,
+        )
+
+    assert [article.source for article in articles] == ["rss", "browser", "reddit"]
+    assert mock_rss.call_count == 1
+    assert mock_browser.call_count == 1
+    assert mock_reddit.call_count == 1
+    assert all("disabled" not in error for error in errors)
+    assert any("cataloged but not collected" in error for error in errors)
+
+
+def test_collect_sources_can_bypass_crawl_health(tmp_path) -> None:
+    health_db = tmp_path / "health.duckdb"
+    with CrawlHealthStore(str(health_db), failure_threshold=1) as store:
+        store.record_failure("rss", error="previous outage", delay=1.0)
+
+    source = Source(
+        name="rss",
+        type="rss",
+        url="https://example.com/feed",
+        config={"bypass_crawl_health": True},
+    )
+    article = Article(
+        title="rss-article",
+        link="https://example.com/rss-article",
+        summary="rss",
+        published=None,
+        source="rss",
+        category="test",
+    )
+    manager = _pass_through_manager()
+
+    with (
+        patch("radar_core.collector._collect_single", return_value=[article]) as mock_rss,
+        patch("radar_core.collector.get_circuit_breaker_manager", return_value=manager),
+    ):
+        articles, errors = collect_sources(
+            [source],
+            category="test",
+            min_interval_per_host=0.0,
+            max_workers=1,
+            health_db_path=str(health_db),
+        )
+
+    assert articles == [article]
+    assert errors == []
+    assert mock_rss.call_count == 1

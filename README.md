@@ -37,3 +37,15 @@ python3.11 -m pytest tests/ -q
 4. let GitHub Actions build and publish the wheel/sdist artifact
 
 The included workflow is designed for GitHub Packages publishing and can also be adapted to PyPI later.
+
+<!-- DATAHUB-OPS-AUDIT:START -->
+## DataHub Operations
+
+- CI/CD workflows: `publish-package.yml`.
+- GitHub Pages visualization: `reports/index.html` (valid HTML); no Pages deployment workflow detected.
+- Latest remote Pages check: not applicable.
+- Local workspace audit: 57 Python files parsed, 0 syntax errors.
+- Re-run audit from the workspace root: `python scripts/audit_ci_pages_readme.py --syntax-check --write`.
+- Latest audit report: `_workspace/2026-04-14_github_ci_pages_readme_audit.md`.
+- Latest Pages URL report: `_workspace/2026-04-14_github_pages_url_check.md`.
+<!-- DATAHUB-OPS-AUDIT:END -->

@@ -218,6 +218,29 @@ def test_upsert_preserves_entities_json(storage: RadarStorage) -> None:
     }
 
 
+def test_upsert_preserves_ontology_json(storage: RadarStorage) -> None:
+    article = _make_article(
+        link="https://example.com/ontology",
+        matched_entities={"BoxOffice": ["daily"]},
+    )
+    article.ontology = {
+        "repo": "MovieRadar",
+        "ontology_version": "0.1.0",
+        "event_model_id": "media.box_office",
+        "source_role_id": "operational_evidence",
+    }
+
+    storage.upsert_articles([article])
+    results = storage.recent_articles("test", days=30)
+
+    assert results[0].ontology == {
+        "repo": "MovieRadar",
+        "ontology_version": "0.1.0",
+        "event_model_id": "media.box_office",
+        "source_role_id": "operational_evidence",
+    }
+
+
 def test_upsert_with_run_id_metadata(storage: RadarStorage) -> None:
     """run_id, collector_version, fetch_status 메타데이터 저장."""
     article = _make_article(link="https://example.com/meta")

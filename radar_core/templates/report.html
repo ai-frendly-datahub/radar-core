@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-visual-system="radar-unified-v2" data-visual-surface="report">
+<html lang="en" data-visual-system="radar-unified-v2" data-visual-surface="report" data-visual-page="daily-report">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -15,28 +15,48 @@
 
     <style>
       :root{
-        --bg0:#0b0b0f;
-        --bg1:#121116;
-        --panel0:rgba(24, 22, 29, .74);
-        --panel1:rgba(28, 26, 34, .74);
-        --panel2:rgba(28, 26, 34, .92);
-        --line:rgba(244, 244, 247, .14);
-        --line2:rgba(244, 244, 247, .22);
-        --shadow:0 18px 60px rgba(0,0,0,.44);
-        --text:#e9eefb;
-        --muted:rgba(233, 238, 251, .72);
-        --faint:rgba(233, 238, 251, .52);
-        --brand:#33d6c5;
-        --brand2:#19b591;
-        --accent:#f6c84c;
-        --danger:#ff5b6e;
+        --vs-bg-0:#0b0b0f;
+        --vs-bg-1:#121116;
+        --vs-surface-0:rgba(24, 22, 29, .74);
+        --vs-surface-1:rgba(28, 26, 34, .74);
+        --vs-surface-2:rgba(28, 26, 34, .92);
+        --vs-line:rgba(244, 244, 247, .14);
+        --vs-line-strong:rgba(244, 244, 247, .22);
+        --vs-shadow:0 18px 60px rgba(0,0,0,.44);
+        --vs-text:#e9eefb;
+        --vs-text-muted:rgba(233, 238, 251, .72);
+        --vs-text-faint:rgba(233, 238, 251, .52);
+        --vs-brand:#33d6c5;
+        --vs-brand-strong:#19b591;
+        --vs-accent:#f6c84c;
+        --vs-danger:#ff5b6e;
+        --vs-font-mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --vs-font-sans:"Pretendard Variable","Pretendard", ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+        --vs-radius:8px;
+        --vs-max:1180px;
 
-        --radius:8px;
-        --radius2:8px;
-        --max:1180px;
+        --bg0:var(--vs-bg-0);
+        --bg1:var(--vs-bg-1);
+        --panel0:var(--vs-surface-0);
+        --panel1:var(--vs-surface-1);
+        --panel2:var(--vs-surface-2);
+        --line:var(--vs-line);
+        --line2:var(--vs-line-strong);
+        --shadow:var(--vs-shadow);
+        --text:var(--vs-text);
+        --muted:var(--vs-text-muted);
+        --faint:var(--vs-text-faint);
+        --brand:var(--vs-brand);
+        --brand2:var(--vs-brand-strong);
+        --accent:var(--vs-accent);
+        --danger:var(--vs-danger);
 
-        --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        --sans:"Pretendard Variable","Pretendard", ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+        --radius:var(--vs-radius);
+        --radius2:var(--vs-radius);
+        --max:var(--vs-max);
+
+        --mono:var(--vs-font-mono);
+        --sans:var(--vs-font-sans);
 
         --focus: 0 0 0 3px rgba(51, 214, 197, .20), 0 0 0 1px rgba(51, 214, 197, .70);
       }
@@ -329,6 +349,94 @@
         min-height: 300px;
       }
 
+      .extra-section-body{
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+      }
+      .extra-section-body p{
+        margin:0;
+        color: rgba(233,238,251,.76);
+        font-size:13px;
+        line-height:1.6;
+      }
+      .extra-section-body > div{
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+      }
+      .extra-section-body h3{
+        margin:0;
+        font-size:13px;
+        font-weight:780;
+        letter-spacing:.02em;
+        text-transform:uppercase;
+        color: rgba(233,238,251,.74);
+        font-family: var(--mono);
+      }
+      .extra-section-body .metric-grid{
+        display:grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap:10px;
+      }
+      .extra-section-body .metric-card{
+        border-radius: 8px;
+        border: 1px solid rgba(150,190,255,.12);
+        background: rgba(10,16,30,.38);
+        padding: 12px;
+      }
+      .extra-section-body .metric-card span{
+        display:block;
+        color: rgba(233,238,251,.64);
+        font-size: 12px;
+      }
+      .extra-section-body .metric-card strong{
+        display:block;
+        margin-top:6px;
+        font-size: 20px;
+        line-height:1.1;
+        letter-spacing:-.02em;
+      }
+      .extra-section-body .inline-chips{
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+      }
+      .extra-section-body .data-table{
+        width:100%;
+        border-collapse: collapse;
+        font-size:13px;
+      }
+      .extra-section-body .data-table th,
+      .extra-section-body .data-table td{
+        padding:10px 8px;
+        border-top: 1px solid rgba(150,190,255,.12);
+        text-align:left;
+        vertical-align:top;
+      }
+      .extra-section-body .data-table th{
+        color: rgba(233,238,251,.64);
+        font-family: var(--mono);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+      }
+      .extra-section-body ul{
+        margin:0;
+        padding-left:18px;
+        color: rgba(233,238,251,.72);
+        font-size:13px;
+        line-height:1.55;
+      }
+      .extra-section-body li + li{
+        margin-top:6px;
+      }
+      .extra-section-body code{
+        font-family: var(--mono);
+        font-size:12px;
+        color: rgba(233,238,251,.86);
+      }
+
       .notice{
         margin-top:14px;
         border-radius: var(--radius2);
@@ -359,6 +467,9 @@
 
       .section{
         margin-top:16px;
+      }
+      .section--extension .panel{
+        border-color: rgba(51,214,197,.18);
       }
       .section-hd{
         display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
@@ -621,6 +732,11 @@
 
         <nav class="nav" aria-label="Jump links">
           <a class="pill" href="#charts">Charts</a>
+          {% if extra_sections %}
+            {% for section in extra_sections %}
+          <a class="pill" href="#{{ section.id|e }}">{{ section.nav_label|e }}</a>
+            {% endfor %}
+          {% endif %}
           <a class="pill" href="#entities">Entities</a>
           <a class="pill" href="#articles">Articles</a>
           {% if errors %}
@@ -830,6 +946,35 @@
           {% endif %}
         </div>
       </section>
+
+      {% if extra_sections %}
+        {% for section in extra_sections %}
+      <section id="{{ section.id|e }}" class="section section--extension" aria-label="{{ section.aria_label|e }}" data-visual-surface="extension">
+        <div class="section-hd">
+          <h2>{{ section.title|e }}</h2>
+          <div class="right">
+            {% for badge in section.badges %}
+            <span class="kbd">{{ badge|e }}</span>
+            {% endfor %}
+          </div>
+        </div>
+
+        <article class="panel">
+          <header class="panel-hd">
+            <div>
+              <p class="panel-title">{{ section.panel_title|e }}</p>
+              {% if section.subtitle %}
+              <p class="panel-sub">{{ section.subtitle|e }}</p>
+              {% endif %}
+            </div>
+          </header>
+          <div class="panel-bd extra-section-body">
+            {{ section.body_html|safe }}
+          </div>
+        </article>
+      </section>
+        {% endfor %}
+      {% endif %}
 
       <section id="entities" class="section" aria-label="Entity table">
         <div class="section-hd">

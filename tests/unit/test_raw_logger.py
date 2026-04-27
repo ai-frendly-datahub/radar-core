@@ -140,3 +140,25 @@ def test_log_without_run_id_appends_to_same_file(tmp_path: Path) -> None:
     assert output_path1 == output_path2
     lines = output_path1.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
+
+
+def test_log_writes_ontology_metadata_when_present(tmp_path: Path) -> None:
+    logger = RawLogger(tmp_path)
+    article = _make_article()
+    article.ontology = {
+        "repo": "PolicyRadar",
+        "event_model_id": "policy.enforcement_action",
+        "source_role_id": "primary_evidence",
+    }
+
+    output_path = logger.log([article], source_name="source")
+    parsed = cast(
+        dict[str, object],
+        json.loads(output_path.read_text(encoding="utf-8").splitlines()[0]),
+    )
+
+    assert parsed["ontology"] == {
+        "repo": "PolicyRadar",
+        "event_model_id": "policy.enforcement_action",
+        "source_role_id": "primary_evidence",
+    }

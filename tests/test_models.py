@@ -22,7 +22,7 @@ from radar_core.models import (
 
 
 def test_article_defaults() -> None:
-    """Article 기본값 확인 — matched_entities 빈 dict, collected_at None."""
+    """Article 기본값 확인 — matched_entities/ontology 빈 dict, collected_at None."""
     article = Article(
         title="Test",
         link="https://example.com/1",
@@ -34,6 +34,7 @@ def test_article_defaults() -> None:
 
     assert article.matched_entities == {}
     assert article.collected_at is None
+    assert article.ontology == {}
 
 
 def test_article_matched_entities_default_empty() -> None:

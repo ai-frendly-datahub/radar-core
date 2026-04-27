@@ -1,0 +1,672 @@
+{
+  "category": "govsupport",
+  "generated_at": "2026-04-12T16:40:51.599681+00:00",
+  "summary": {
+    "total_sources": 25,
+    "tracked_sources": 7,
+    "fresh_sources": 1,
+    "stale_sources": 0,
+    "missing_sources": 6,
+    "missing_event_sources": 0,
+    "unknown_event_date_sources": 0,
+    "not_tracked_sources": 18,
+    "application_deadline_events": 2,
+    "eligibility_rule_events": 7,
+    "collection_error_count": 28
+  },
+  "sources": [
+    {
+      "source": "정부24 보조금",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "application_deadline",
+      "freshness_sla_days": 1,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": [
+        "정부24 보조금: Failed to collect browser content from 정부24 보조금: Page.wait_for_selector: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\".svc-list\") to be visible\n"
+      ]
+    },
+    {
+      "source": "정책브리핑",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "support_program_notice",
+      "freshness_sla_days": 2,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "소상공인시장진흥공단",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "eligibility_rule",
+      "freshness_sla_days": 1,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "서울시 지원사업",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "application_deadline",
+      "freshness_sla_days": 1,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "행정안전부",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "support_program_notice",
+      "freshness_sla_days": 2,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": [
+        "행정안전부: Failed to collect browser content from 행정안전부: Page.wait_for_selector: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\".board_list\") to be visible\n"
+      ]
+    },
+    {
+      "source": "보건복지부",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "eligibility_rule",
+      "freshness_sla_days": 2,
+      "status": "fresh",
+      "article_count": 1,
+      "event_count": 1,
+      "latest_event_at": "2026-04-12T16:40:31.465207+00:00",
+      "age_days": 0.0,
+      "latest_title": "목록 < 전체 < 보도자료 < 알림 : 힘이 되는 평생 친구, 보건복지부",
+      "latest_url": "https://www.mohw.go.kr/board.es?mid=a10503010100&bid=0027",
+      "latest_application_deadline": "2026-01-16",
+      "latest_eligibility_fields": {
+        "TargetGroup": [
+          "청년",
+          "취약계층"
+        ],
+        "Industry": [
+          "제조",
+          "콘텐츠",
+          "AI"
+        ],
+        "Region": [
+          "광주",
+          "세종"
+        ]
+      },
+      "errors": []
+    },
+    {
+      "source": "금융위원회",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "eligibility_rule",
+      "freshness_sla_days": 2,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": [
+        "금융위원회: Failed to collect browser content from 금융위원회: Page.goto: net::ERR_CONNECTION_RESET at https://www.fsc.go.kr/no010101\nCall log:\n  - navigating to \"https://www.fsc.go.kr/no010101\", waiting until \"domcontentloaded\"\n"
+      ]
+    },
+    {
+      "source": "농림축산식품부",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "eligibility_rule",
+      "freshness_sla_days": 2,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "국토교통부",
+      "source_type": "javascript",
+      "enabled": true,
+      "tracked": true,
+      "event_model": "eligibility_rule",
+      "freshness_sla_days": 2,
+      "status": "missing",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": [
+        "국토교통부: Failed to collect browser content from 국토교통부: Page.goto: net::ERR_CONNECTION_RESET at https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp\nCall log:\n  - navigating to \"https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp\", waiting until \"domcontentloaded\"\n"
+      ]
+    },
+    {
+      "source": "r/korea",
+      "source_type": "reddit",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "r/smallbusiness",
+      "source_type": "reddit",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 2,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "r/startups",
+      "source_type": "reddit",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "r/Entrepreneur",
+      "source_type": "reddit",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "TechCrunch Startups",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "한국경제 경제",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "한국경제 정치",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "매일경제 정치",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "매일경제 경제정책",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "동아일보 경제",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "경향신문 경제",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "한겨레 경제",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "서울경제 경제",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": [
+        "서울경제 경제: Source disabled (crawl health threshold reached)"
+      ]
+    },
+    {
+      "source": "SBS 뉴스 정치",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 1,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "K-GAPI 공공API 현황분석",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    },
+    {
+      "source": "Awesome MCP Korea",
+      "source_type": "rss",
+      "enabled": true,
+      "tracked": false,
+      "event_model": "",
+      "freshness_sla_days": null,
+      "status": "not_tracked",
+      "article_count": 0,
+      "event_count": 0,
+      "latest_event_at": null,
+      "age_days": null,
+      "latest_title": "",
+      "latest_url": "",
+      "latest_application_deadline": "",
+      "latest_eligibility_fields": {},
+      "errors": []
+    }
+  ],
+  "events": [
+    {
+      "source": "보건복지부",
+      "event_model": "application_deadline",
+      "title": "목록 < 전체 < 보도자료 < 알림 : 힘이 되는 평생 친구, 보건복지부",
+      "url": "https://www.mohw.go.kr/board.es?mid=a10503010100&bid=0027",
+      "event_at": "2026-01-16T00:00:00+00:00",
+      "application_deadline": "2026-01-16",
+      "application_start_date": "2026-04-11",
+      "eligibility_fields": {
+        "TargetGroup": [
+          "청년",
+          "취약계층"
+        ],
+        "Industry": [
+          "제조",
+          "콘텐츠",
+          "AI"
+        ],
+        "Region": [
+          "광주",
+          "세종"
+        ]
+      }
+    },
+    {
+      "source": "보건복지부",
+      "event_model": "eligibility_rule",
+      "title": "목록 < 전체 < 보도자료 < 알림 : 힘이 되는 평생 친구, 보건복지부",
+      "url": "https://www.mohw.go.kr/board.es?mid=a10503010100&bid=0027",
+      "event_at": "2026-04-12T16:40:31.465207+00:00",
+      "application_deadline": "2026-01-16",
+      "application_start_date": "2026-04-11",
+      "eligibility_fields": {
+        "TargetGroup": [
+          "청년",
+          "취약계층"
+        ],
+        "Industry": [
+          "제조",
+          "콘텐츠",
+          "AI"
+        ],
+        "Region": [
+          "광주",
+          "세종"
+        ]
+      }
+    },
+    {
+      "source": "r/startups",
+      "event_model": "eligibility_rule",
+      "title": "[i will not promote] We hit #1 Product of the Week on Product Hunt with $0 marketing, now the launch spike is dying and I don't know how to build sustained growth",
+      "url": "https://www.reddit.com/r/startups/comments/1sjhupi/i_will_not_promote_we_hit_1_product_of_the_week/",
+      "event_at": "2026-04-12T15:39:35+00:00",
+      "application_deadline": "",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Industry": [
+          "AI"
+        ]
+      }
+    },
+    {
+      "source": "r/korea",
+      "event_model": "eligibility_rule",
+      "title": "Sacrificial Class during Silla Dynasty.",
+      "url": "https://www.reddit.com/r/korea/comments/1sjhesr/sacrificial_class_during_silla_dynasty/",
+      "event_at": "2026-04-12T15:22:44+00:00",
+      "application_deadline": "",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Industry": [
+          "ICT",
+          "AI"
+        ]
+      }
+    },
+    {
+      "source": "r/Entrepreneur",
+      "event_model": "eligibility_rule",
+      "title": "Nearly took all my efforts to get to this point back again, Im happy.",
+      "url": "https://www.reddit.com/r/Entrepreneur/comments/1sj8xnv/nearly_took_all_my_efforts_to_get_to_this_point/",
+      "event_at": "2026-04-12T08:31:39+00:00",
+      "application_deadline": "",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Industry": [
+          "AI"
+        ]
+      }
+    },
+    {
+      "source": "동아일보 경제",
+      "event_model": "application_deadline",
+      "title": "‘압여목성’ 잇단 단독입찰… 사라진 재건축 수주전",
+      "url": "https://www.donga.com/news/Economy/article/all/20260412/133723197/2",
+      "event_at": "2026-04-12T00:00:00+00:00",
+      "application_deadline": "2026-04-12",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Region": [
+          "서울"
+        ]
+      }
+    },
+    {
+      "source": "동아일보 경제",
+      "event_model": "eligibility_rule",
+      "title": "‘압여목성’ 잇단 단독입찰… 사라진 재건축 수주전",
+      "url": "https://www.donga.com/news/Economy/article/all/20260412/133723197/2",
+      "event_at": "2026-04-12T06:30:00+00:00",
+      "application_deadline": "2026-04-12",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Region": [
+          "서울"
+        ]
+      }
+    },
+    {
+      "source": "경향신문 경제",
+      "event_model": "eligibility_rule",
+      "title": "‘제2의 삼천당제약’ 막아라",
+      "url": "https://www.khan.co.kr/article/202604122107015/?utm_source=khan_rss&utm_medium=rss&utm_campaign=economy_news",
+      "event_at": "2026-04-12T03:07:01+00:00",
+      "application_deadline": "",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Industry": [
+          "바이오"
+        ]
+      }
+    },
+    {
+      "source": "TechCrunch Startups",
+      "event_model": "eligibility_rule",
+      "title": "Walmart-owned Flipkart, Amazon are squeezing India’s quick commerce startups",
+      "url": "https://techcrunch.com/2026/04/11/walmart-owned-flipkart-amazon-are-squeezing-indias-quick-commerce-startups/",
+      "event_at": "2026-04-11T18:00:00+00:00",
+      "application_deadline": "",
+      "application_start_date": "",
+      "eligibility_fields": {
+        "Industry": [
+          "AI"
+        ]
+      }
+    }
+  ],
+  "errors": [
+    "서울경제 경제: Source disabled (crawl health threshold reached)",
+    "정부24 보조금: Failed to collect browser content from 정부24 보조금: Page.wait_for_selector: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\".svc-list\") to be visible\n",
+    "행정안전부: Failed to collect browser content from 행정안전부: Page.wait_for_selector: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\".board_list\") to be visible\n",
+    "금융위원회: Failed to collect browser content from 금융위원회: Page.goto: net::ERR_CONNECTION_RESET at https://www.fsc.go.kr/no010101\nCall log:\n  - navigating to \"https://www.fsc.go.kr/no010101\", waiting until \"domcontentloaded\"\n",
+    "국토교통부: Failed to collect browser content from 국토교통부: Page.goto: net::ERR_CONNECTION_RESET at https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp\nCall log:\n  - navigating to \"https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp\", waiting until \"domcontentloaded\"\n",
+    "http://www.mafra.go.kr/bbs/home/792/577576/artclView.do: summary is missing or not a string",
+    "https://www.hankyung.com/article/2026041251651: summary is missing or not a string",
+    "https://www.hankyung.com/article/2026041252961: summary is missing or not a string",
+    "javascript:fncGoDetail('53214');: link has invalid URL format: javascript:fncGoDetail('53214');",
+    "javascript:fncGoDetail('53213');: link has invalid URL format: javascript:fncGoDetail('53213');",
+    "javascript:fncGoDetail('53181');: link has invalid URL format: javascript:fncGoDetail('53181');",
+    "javascript:fncGoDetail('53137');: link has invalid URL format: javascript:fncGoDetail('53137');",
+    "javascript:fncGoDetail('53136');: link has invalid URL format: javascript:fncGoDetail('53136');",
+    "javascript:fncGoDetail('53092');: link has invalid URL format: javascript:fncGoDetail('53092');",
+    "javascript:fncGoDetail('53058');: link has invalid URL format: javascript:fncGoDetail('53058');",
+    "javascript:fncGoDetail('52997');: link has invalid URL format: javascript:fncGoDetail('52997');",
+    "javascript:fncGoDetail('53036');: link has invalid URL format: javascript:fncGoDetail('53036');",
+    "javascript:fncGoDetail('52953');: link has invalid URL format: javascript:fncGoDetail('52953');",
+    "javascript:fnTbbsView('456070');: link has invalid URL format: javascript:fnTbbsView('456070');",
+    "javascript:fnTbbsView('456045');: link has invalid URL format: javascript:fnTbbsView('456045');",
+    "javascript:fnTbbsView('456043');: link has invalid URL format: javascript:fnTbbsView('456043');",
+    "javascript:fnTbbsView('456040');: link has invalid URL format: javascript:fnTbbsView('456040');",
+    "javascript:fnTbbsView('456038');: link has invalid URL format: javascript:fnTbbsView('456038');",
+    "javascript:fnTbbsView('456031');: link has invalid URL format: javascript:fnTbbsView('456031');",
+    "javascript:fnTbbsView('456028');: link has invalid URL format: javascript:fnTbbsView('456028');",
+    "javascript:fnTbbsView('456016');: link has invalid URL format: javascript:fnTbbsView('456016');",
+    "javascript:fnTbbsView('456009');: link has invalid URL format: javascript:fnTbbsView('456009');",
+    "javascript:fnTbbsView('456007');: link has invalid URL format: javascript:fnTbbsView('456007');"
+  ]
+}

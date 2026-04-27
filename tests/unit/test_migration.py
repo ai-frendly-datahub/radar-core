@@ -58,6 +58,7 @@ def test_migration_adds_lineage_columns_to_legacy_articles(tmp_path: Path) -> No
     assert "collector_version" in columns
     assert "fetch_status" in columns
     assert "fetched_at" in columns
+    assert "ontology_json" in columns
 
 
 def test_migration_preserves_old_data_and_new_columns_are_null(tmp_path: Path) -> None:
@@ -85,13 +86,13 @@ def test_migration_preserves_old_data_and_new_columns_are_null(tmp_path: Path) -
         )
         _ = migrate(conn)
         row = cast(
-            tuple[object, object, object, object, object] | None,
+            tuple[object, object, object, object, object, object] | None,
             conn.execute(
                 """
-            SELECT title, run_id, collector_version, fetch_status, fetched_at
-            FROM articles
-            WHERE link = ?
-            """,
+                SELECT title, run_id, collector_version, fetch_status, fetched_at, ontology_json
+                FROM articles
+                WHERE link = ?
+                """,
                 ["https://example.com/legacy"],
             ).fetchone(),
         )
@@ -104,6 +105,7 @@ def test_migration_preserves_old_data_and_new_columns_are_null(tmp_path: Path) -
     assert row[2] is None
     assert row[3] is None
     assert row[4] is None
+    assert row[5] is None
 
 
 def test_migration_is_idempotent(tmp_path: Path) -> None:
@@ -117,7 +119,11 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    assert first_applied == ["v001_lineage_columns", "v002_crawl_health"]
+    assert first_applied == [
+        "v001_lineage_columns",
+        "v002_crawl_health",
+        "v003_article_ontology",
+    ]
     assert second_applied == []
 
 
@@ -182,3 +188,36 @@ def test_upsert_articles_accepts_lineage_fields(tmp_path: Path) -> None:
     assert row[1] == "0.1.0"
     assert row[2] == "success"
     assert row[3] is not None
+
+
+def test_upsert_articles_persists_ontology_json(tmp_path: Path) -> None:
+    db_path = tmp_path / "ontology_upsert.duckdb"
+    storage = RadarStorage(db_path)
+    article = Article(
+        title="Ontology write",
+        link="https://example.com/ontology",
+        summary="ontology metadata",
+        published=datetime(2026, 3, 11, 11, 0, tzinfo=UTC),
+        source="Example RSS",
+        category="tech",
+        ontology={"event_model_id": "policy.enforcement_action"},
+    )
+
+    try:
+        storage.upsert_articles([article])
+        row = cast(
+            tuple[object] | None,
+            storage.conn.execute(
+                """
+                SELECT ontology_json
+                FROM articles
+                WHERE link = ?
+                """,
+                [article.link],
+            ).fetchone(),
+        )
+    finally:
+        storage.close()
+
+    assert row is not None
+    assert row[0] == '{"event_model_id": "policy.enforcement_action"}'

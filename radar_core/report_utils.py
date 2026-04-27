@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -26,8 +27,10 @@ def generate_report(
     stats: dict[str, int],
     errors: list[str] | None = None,
     plugin_charts: dict[str, Any] | None = None,
+    extra_sections: Iterable[dict[str, Any]] | None = None,
     prev_report: str | None = None,
     next_report: str | None = None,
+    ontology_metadata: Mapping[str, Any] | None = None,
 ) -> Path:
     """Generate an HTML report from collected articles.
 
@@ -122,16 +125,8 @@ def generate_report(
             scanned_next = dated_reports[idx + 1][1]
         break
 
-    normalized_plugin_charts: list[Any] = []
-    if plugin_charts:
-        if isinstance(plugin_charts, dict):
-            normalized_plugin_charts = [
-                value
-                for value in plugin_charts.values()
-                if isinstance(value, dict) and value
-            ]
-        elif isinstance(plugin_charts, list):
-            normalized_plugin_charts = plugin_charts
+    normalized_plugin_charts = _normalize_plugin_charts(plugin_charts)
+    normalized_extra_sections = _normalize_extra_sections(extra_sections)
 
     templates_dir = Path(__file__).parent / "templates"
     env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
@@ -146,6 +141,7 @@ def generate_report(
         entity_counts=entity_counts,
         errors=errors or [],
         plugin_charts=normalized_plugin_charts,
+        extra_sections=normalized_extra_sections,
         prev_report=prev_report if prev_report is not None else scanned_prev,
         next_report=next_report if next_report is not None else scanned_next,
     )
@@ -155,9 +151,62 @@ def generate_report(
     dated_path.write_text(rendered, encoding="utf-8")
 
     generate_summary_json(
-        category.category_name, articles_json, stats, output_path.parent
+        category.category_name,
+        articles_json,
+        stats,
+        output_path.parent,
+        ontology_metadata=ontology_metadata,
     )
     return output_path
+
+
+def _normalize_plugin_charts(plugin_charts: object) -> list[dict[str, Any]]:
+    if not plugin_charts:
+        return []
+    if isinstance(plugin_charts, dict):
+        return [
+            value for value in plugin_charts.values() if isinstance(value, dict) and value
+        ]
+    if isinstance(plugin_charts, list):
+        return [value for value in plugin_charts if isinstance(value, dict) and value]
+    return []
+
+
+def _normalize_extra_sections(extra_sections: object) -> list[dict[str, Any]]:
+    if not isinstance(extra_sections, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for raw_section in extra_sections:
+        if not isinstance(raw_section, Mapping):
+            continue
+
+        section_id = str(raw_section.get("id") or "").strip()
+        title = str(raw_section.get("title") or "").strip()
+        body_html = str(raw_section.get("body_html") or "").strip()
+        if not section_id or not title or not body_html:
+            continue
+
+        badges_raw = raw_section.get("badges")
+        badges: list[str] = []
+        if isinstance(badges_raw, list):
+            badges = [str(value).strip() for value in badges_raw if str(value).strip()]
+
+        normalized.append(
+            {
+                "id": section_id,
+                "title": title,
+                "panel_title": str(raw_section.get("panel_title") or title).strip()
+                or title,
+                "subtitle": str(raw_section.get("subtitle") or "").strip(),
+                "nav_label": str(raw_section.get("nav_label") or title).strip() or title,
+                "aria_label": str(raw_section.get("aria_label") or title).strip()
+                or title,
+                "badges": badges,
+                "body_html": body_html,
+            }
+        )
+    return normalized
 
 
 def generate_index_html(
@@ -286,6 +335,7 @@ def generate_summary_json(
     articles: list[dict],
     stats: dict[str, int],
     output_dir: Path,
+    ontology_metadata: Mapping[str, Any] | None = None,
 ) -> Path:
     """Generate a JSON summary of articles and statistics.
 
@@ -349,6 +399,9 @@ def generate_summary_json(
         "sources": dict(source_counts),
         "generated_at": now.isoformat(),
     }
+    normalized_ontology = _normalize_summary_metadata(ontology_metadata)
+    if normalized_ontology:
+        summary["ontology"] = normalized_ontology
 
     output_path = output_dir / f"{category_name}_{date_stamp}_summary.json"
     output_path.write_text(
@@ -356,3 +409,34 @@ def generate_summary_json(
         encoding="utf-8",
     )
     return output_path
+
+
+def _normalize_summary_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(metadata, Mapping):
+        return {}
+
+    normalized: dict[str, Any] = {}
+    for key, value in metadata.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        normalized[normalized_key] = _normalize_summary_metadata_value(value)
+    return normalized
+
+
+def _normalize_summary_metadata_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key).strip(): _normalize_summary_metadata_value(item)
+            for key, item in value.items()
+            if str(key).strip()
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [_normalize_summary_metadata_value(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)

@@ -4,7 +4,11 @@ import re
 from collections.abc import Iterable
 from functools import lru_cache
 
+from .common.korean_analyzer import KoreanAnalyzer
 from .models import Article, EntityDefinition
+
+
+_korean_analyzer = KoreanAnalyzer()
 
 
 def _is_ascii_only(keyword: str) -> bool:
@@ -14,6 +18,21 @@ def _is_ascii_only(keyword: str) -> bool:
 @lru_cache(maxsize=2048)
 def _compile_ascii_keyword_pattern(keyword: str) -> re.Pattern[str]:
     return re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
+
+
+def _matches_keyword(
+    haystack: str,
+    haystack_lower: str,
+    keyword: str,
+    pattern: re.Pattern[str] | None,
+) -> bool:
+    if pattern is not None:
+        return pattern.search(haystack) is not None
+
+    if getattr(_korean_analyzer, "_kiwi", None) is not None:
+        return _korean_analyzer.match_keyword(haystack, keyword)
+
+    return keyword in haystack_lower
 
 
 def apply_entity_rules(
@@ -47,11 +66,7 @@ def apply_entity_rules(
             hit_keywords = [
                 keyword
                 for keyword, pattern in keywords_with_patterns
-                if (
-                    pattern.search(haystack)
-                    if pattern is not None
-                    else keyword in haystack_lower
-                )
+                if _matches_keyword(haystack, haystack_lower, keyword, pattern)
             ]
             if hit_keywords:
                 matches[entity.name] = hit_keywords

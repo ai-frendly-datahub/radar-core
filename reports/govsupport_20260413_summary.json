@@ -1,0 +1,72 @@
+{
+  "date": "2026-04-13",
+  "category": "govsupport",
+  "article_count": 13,
+  "source_count": 12,
+  "matched_count": 11,
+  "top_entities": [
+    {
+      "name": "GovGeneral",
+      "count": 42
+    },
+    {
+      "name": "TargetGroup",
+      "count": 9
+    },
+    {
+      "name": "ApplicationInfo",
+      "count": 9
+    },
+    {
+      "name": "EligibilityIndustry",
+      "count": 9
+    },
+    {
+      "name": "OperationalEvent",
+      "count": 9
+    },
+    {
+      "name": "SupportType",
+      "count": 5
+    },
+    {
+      "name": "Region",
+      "count": 4
+    },
+    {
+      "name": "Ministry",
+      "count": 3
+    },
+    {
+      "name": "EligibilityRegion",
+      "count": 3
+    },
+    {
+      "name": "ApplicationDeadline",
+      "count": 2
+    },
+    {
+      "name": "EligibilityTargetGroup",
+      "count": 2
+    },
+    {
+      "name": "ApplicationStartDate",
+      "count": 1
+    }
+  ],
+  "sources": {
+    "한겨레 경제": 1,
+    "보건복지부": 1,
+    "r/smallbusiness": 2,
+    "r/startups": 1,
+    "r/korea": 1,
+    "r/Entrepreneur": 1,
+    "동아일보 경제": 1,
+    "매일경제 경제정책": 1,
+    "경향신문 경제": 1,
+    "SBS 뉴스 정치": 1,
+    "매일경제 정치": 1,
+    "TechCrunch Startups": 1
+  },
+  "generated_at": "2026-04-13T01:40:51.626875+09:00"
+}

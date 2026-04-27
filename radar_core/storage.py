@@ -51,6 +51,7 @@ class RadarStorage:
                 published TIMESTAMP,
                 collected_at TIMESTAMP NOT NULL,
                 entities_json TEXT,
+                ontology_json TEXT,
                 run_id TEXT,
                 collector_version TEXT,
                 fetch_status TEXT,
@@ -85,6 +86,7 @@ class RadarStorage:
                     _utc_naive(article.published),
                     now,
                     json.dumps(article.matched_entities, ensure_ascii=False),
+                    json.dumps(article.ontology, ensure_ascii=False),
                     run_id,
                     collector_version,
                     fetch_status,
@@ -108,18 +110,20 @@ class RadarStorage:
                     published,
                     collected_at,
                     entities_json,
+                    ontology_json,
                     run_id,
                     collector_version,
                     fetch_status,
                     fetched_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(link) DO UPDATE SET
                     title = EXCLUDED.title,
                     summary = EXCLUDED.summary,
                     published = EXCLUDED.published,
                     collected_at = EXCLUDED.collected_at,
                     entities_json = EXCLUDED.entities_json,
+                    ontology_json = EXCLUDED.ontology_json,
                     run_id = EXCLUDED.run_id,
                     collector_version = EXCLUDED.collector_version,
                     fetch_status = EXCLUDED.fetch_status,
@@ -141,7 +145,7 @@ class RadarStorage:
         since = _utc_naive(datetime.now(UTC) - timedelta(days=days))
         cur = self.conn.execute(
             """
-            SELECT category, source, title, link, summary, published, collected_at, entities_json
+            SELECT category, source, title, link, summary, published, collected_at, entities_json, ontology_json
             FROM articles
             WHERE category = ? AND COALESCE(published, collected_at) >= ?
             ORDER BY COALESCE(published, collected_at) DESC
@@ -160,6 +164,7 @@ class RadarStorage:
                     datetime | None,
                     datetime | None,
                     str | None,
+                    str | None,
                 ]
             ],
             cur.fetchall(),
@@ -176,28 +181,13 @@ class RadarStorage:
                 published,
                 collected_at,
                 raw_entities,
+                raw_ontology,
             ) = row
             published_at = published if isinstance(published, datetime) else None
             collected = collected_at if isinstance(collected_at, datetime) else None
 
-            entities: dict[str, list[str]] = {}
-            if raw_entities:
-                try:
-                    parsed_entities = cast(object, json.loads(raw_entities))
-                    if isinstance(parsed_entities, dict):
-                        parsed_map = cast(dict[object, object], parsed_entities)
-                        entities = {}
-                        for name, keywords in parsed_map.items():
-                            if not isinstance(name, str) or not isinstance(
-                                keywords, list
-                            ):
-                                continue
-                            normalized_keywords: list[str] = []
-                            for keyword in cast(list[object], keywords):
-                                normalized_keywords.append(str(keyword))
-                            entities[name] = normalized_keywords
-                except json.JSONDecodeError:
-                    entities = {}
+            entities = _parse_entities_json(raw_entities)
+            ontology = _parse_ontology_json(raw_ontology)
 
             results.append(
                 Article(
@@ -209,6 +199,7 @@ class RadarStorage:
                     category=str(category_value),
                     matched_entities=entities,
                     collected_at=collected,
+                    ontology=ontology,
                 )
             )
         return results
@@ -221,6 +212,41 @@ class RadarStorage:
         ).fetchone()
         to_delete = count_row[0] if count_row else 0
         _ = self.conn.execute(
-            "DELETE FROM articles WHERE COALESCE(published, collected_at) < ?", [cutoff]
+            "DELETE FROM articles WHERE COALESCE(published, collected_at) < ?",
+            [cutoff],
         )
         return to_delete
+
+
+def _parse_entities_json(raw_entities: str | None) -> dict[str, list[str]]:
+    entities: dict[str, list[str]] = {}
+    if not raw_entities:
+        return entities
+    try:
+        parsed_entities = cast(object, json.loads(raw_entities))
+    except json.JSONDecodeError:
+        return entities
+    if not isinstance(parsed_entities, dict):
+        return entities
+    parsed_map = cast(dict[object, object], parsed_entities)
+    for name, keywords in parsed_map.items():
+        if not isinstance(name, str) or not isinstance(keywords, list):
+            continue
+        entities[name] = [str(keyword) for keyword in cast(list[object], keywords)]
+    return entities
+
+
+def _parse_ontology_json(raw_ontology: str | None) -> dict[str, object]:
+    if not raw_ontology:
+        return {}
+    try:
+        parsed_ontology = cast(object, json.loads(raw_ontology))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed_ontology, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in cast(dict[object, object], parsed_ontology).items()
+        if str(key).strip()
+    }
