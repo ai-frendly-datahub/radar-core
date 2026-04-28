@@ -1,6 +1,6 @@
 # RADAR-CORE
 
-24개 Radar 레포가 공유하는 핵심 라이브러리 (v0.2.0).
+36개 Radar/MCP Radar 레포와 `Radar-Template`가 공유하는 핵심 라이브러리 (v0.2.0).
 HTML 리포트 생성, 데이터 모델, 스토리지, 분석기, 수집기를 제공합니다.
 
 ## PURPOSE
@@ -101,14 +101,22 @@ from radar_core import (
 
 ## DEPENDENT REPOSITORIES
 
-모든 24개 Radar 레포가 이 패키지에 의존합니다:
-GameRadar, MovieRadar, MusicRadar, BookRadar, TechRadar, ScienceRadar, HealthRadar, FinanceRadar, CryptoRadar, EduRadar, JobRadar, RealEstateRadar, TravelRadar, FoodRadar, FashionRadar, SportsRadar, AutoRadar, PetRadar, HomeRadar, GardenRadar, WineRadar, PriceRadar, TrendRadar, WeatherRadar
+현재 워크스페이스 기준 모든 도메인 Radar와 MCP Radar, 그리고 `Radar-Template`가 이 패키지에 의존합니다.
+
+도메인 Radar:
+ArtRadar, BenefitRadar, BlogRadar, BookRadar, CryptoRadar, EventRadar, FoodRadar, GameRadar, GovRadar, HomeRadar, JobRadar, MobilityRadar, MovieRadar, PaperRadar, PaperworkRadar, PolicyRadar, PriceRadar, PropertyRadar, QueueRadar, RefundRadar, SubscriptionRadar, TrendRadar, TrustRadar, WineRadar
+
+MCP Radar:
+CollaborationMCPRadar, CommerceMCPRadar, FinanceTaxMCPRadar, KoreanNLPMCPRadar, LegalGovMCPRadar, MapAddressMCPRadar, MiscMCPRadar, PublicDataMCPRadar, RealEstateMCPRadar, SearchTrendMCPRadar, TravelMCPRadar, WeatherMCPRadar
+
+Template:
+Radar-Template
 
 변경 시 하위 호환성 유지가 필수입니다.
 
 ## MODIFICATION RULES
 
-- `generate_report()` 함수 시그니처 변경 금지 (24개 레포 영향)
+- `generate_report()` 함수 시그니처 변경 금지 (36개 Radar/MCP Radar와 `Radar-Template` 영향)
 - `generate_index_html()` 함수 시그니처 변경 금지
 - `RadarStorage` 스키마 변경 시 마이그레이션 스크립트 필요
 - 새 기능 추가 시 `__init__.py`의 `__all__` 업데이트 필수

@@ -31,10 +31,13 @@ from .models import (
     WebhookConfig,
 )
 from .ontology import (
+    EnumValueError,
     annotate_articles_with_ontology,
     backfill_duckdb_ontology,
     build_article_ontology_metadata,
+    build_event_model_payload,
     build_summary_ontology_metadata,
+    get_event_model_field_spec,
     load_runtime_contract,
 )
 from .nl_query import ParsedQuery, parse_query
@@ -71,7 +74,9 @@ __all__ = [
     "annotate_articles_with_ontology",
     "backfill_duckdb_ontology",
     "build_article_ontology_metadata",
+    "build_event_model_payload",
     "build_summary_ontology_metadata",
+    "get_event_model_field_spec",
     "CategoryConfig",
     "CompositeNotifier",
     "configure_logging",
@@ -85,6 +90,7 @@ __all__ = [
     "EmailSettings",
     "EmailNotifier",
     "EntityDefinition",
+    "EnumValueError",
     "ExtractedContent",
     "extract_url_content",
     "extract_url_content_safe",

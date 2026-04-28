@@ -6,6 +6,7 @@ Shared Python package for the AI-Friendly DataHub Radar ecosystem.
 
 - shared storage, search, analyzer, migration, and raw logging utilities
 - common validation and quality-check helpers
+- ontology runtime-contract helpers and event model payload emission utilities
 - optional Korean keyword matching via `kiwipiepy`
 
 ## Install

@@ -85,6 +85,16 @@ def generate_report(
             }
         )
 
+        # Cycle 13: opt-in propagation of per-article event_model_payload
+        # stashed on Article.ontology by upstream radars. When the payload is
+        # absent (default for legacy callers whose Article.ontology is
+        # empty) articles_json sees no change — zero regression.
+        ontology = getattr(article, "ontology", None)
+        if isinstance(ontology, Mapping):
+            payload = ontology.get("event_model_payload")
+            if payload:
+                articles_json[-1]["event_model_payload"] = payload
+
         if isinstance(matched_entities_raw, dict):
             for entity_name, keywords in matched_entities_raw.items():
                 if not isinstance(entity_name, str) or not entity_name:
@@ -399,6 +409,16 @@ def generate_summary_json(
         "sources": dict(source_counts),
         "generated_at": now.isoformat(),
     }
+    # Opt-in preservation of per-article `event_model_payload` for ontology-aware
+    # downstream consumers (e.g. dashboard event-model panel). Callers that do not
+    # attach this key see no change in output schema (zero regression).
+    preserved_articles = [
+        {"event_model_payload": article["event_model_payload"]}
+        for article in articles
+        if isinstance(article, Mapping) and article.get("event_model_payload")
+    ]
+    if preserved_articles:
+        summary["articles"] = preserved_articles
     normalized_ontology = _normalize_summary_metadata(ontology_metadata)
     if normalized_ontology:
         summary["ontology"] = normalized_ontology

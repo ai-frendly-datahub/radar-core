@@ -691,3 +691,211 @@ def test_generate_index_html_mixed_date_patterns(tmp_path) -> None:
     assert "2024-03-16" in dates
     assert "2024-03-15" in dates
     assert dates == sorted(dates, reverse=True)
+
+
+# ── Cycle 11: opt-in event_model_payload preservation ────────────────────
+
+
+def test_generate_summary_json_preserves_article_event_model_payload(
+    tmp_path,
+) -> None:
+    """When input articles carry an `event_model_payload` key, the summary
+    output must surface them under `articles`. When no article carries the
+    key, the `articles` key must be absent (zero regression)."""
+    output_dir = tmp_path / "summaries"
+
+    # (a) Preservation: at least one article supplies event_model_payload.
+    articles_with_payload = [
+        {
+            "source": "YTN",
+            "matched_entities": ["Nintendo"],
+            "event_model_payload": {
+                "source_name": "YTN",
+                "headline": "Headline A",
+                "source_url": "https://x.example/a",
+            },
+        },
+        {
+            "source": "MBC",
+            "matched_entities": ["Xbox"],
+        },
+        {
+            "source": "KBS",
+            "matched_entities": ["PlayStation"],
+            "event_model_payload": {
+                "source_name": "KBS",
+                "headline": "Headline B",
+                "source_url": "https://x.example/b",
+            },
+        },
+    ]
+    preserved_path = generate_summary_json(
+        category_name="game",
+        articles=articles_with_payload,
+        stats={},
+        output_dir=output_dir,
+    )
+    preserved_payload = json.loads(preserved_path.read_text(encoding="utf-8"))
+    assert "articles" in preserved_payload
+    assert preserved_payload["articles"] == [
+        {
+            "event_model_payload": {
+                "source_name": "YTN",
+                "headline": "Headline A",
+                "source_url": "https://x.example/a",
+            }
+        },
+        {
+            "event_model_payload": {
+                "source_name": "KBS",
+                "headline": "Headline B",
+                "source_url": "https://x.example/b",
+            }
+        },
+    ]
+
+    # (b) Zero-regression: legacy callers (no event_model_payload key) see no
+    # `articles` field appear in the output.
+    legacy_articles = [
+        {"source": "YTN", "matched_entities": ["Nintendo"]},
+        {"source": "MBC", "matched_entities": []},
+    ]
+    legacy_path = generate_summary_json(
+        category_name="legacy",
+        articles=legacy_articles,
+        stats={},
+        output_dir=output_dir,
+    )
+    legacy_payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert "articles" not in legacy_payload
+
+
+# ── Cycle 13: generate_report propagates Article.ontology["event_model_payload"]
+
+
+def test_generate_report_propagates_article_ontology_payload(
+    tmp_path, monkeypatch
+) -> None:
+    """When Article.ontology carries an `event_model_payload`, the auto-emitted
+    summary JSON must surface it under `articles` (opt-in path)."""
+    fixed_now = datetime(2024, 3, 15, 9, 30, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="wine",
+        display_name="Wine Radar",
+        sources=[],
+        entities=[],
+    )
+    article_with_payload = Article(
+        title="Bordeaux 2024 Vintage Outlook",
+        link="https://example.com/bordeaux-2024",
+        summary="Trade media commentary on the 2024 Bordeaux harvest.",
+        published=fixed_now,
+        source="Decanter",
+        category="wine",
+        matched_entities={"Bordeaux": ["bordeaux"]},
+        collected_at=fixed_now,
+        ontology={
+            "event_model_payload": {
+                "title": "Bordeaux 2024 Vintage Outlook",
+                "published_date": "2024-03-15T09:30:00+00:00",
+                "source_url": "https://example.com/bordeaux-2024",
+            }
+        },
+    )
+    article_without_payload = Article(
+        title="Other Wine Headline",
+        link="https://example.com/other",
+        summary="No event_model_payload attached.",
+        published=fixed_now,
+        source="Wine Spectator",
+        category="wine",
+        matched_entities={},
+        collected_at=fixed_now,
+    )
+    output_path = tmp_path / "reports" / "wine_report.html"
+    generate_report(
+        category=category,
+        articles=[article_with_payload, article_without_payload],
+        output_path=output_path,
+        stats={"sources": 2, "collected": 2, "matched": 1, "window_days": 7},
+    )
+
+    summary_path = tmp_path / "reports" / "wine_20240315_summary.json"
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert "articles" in summary_payload
+    assert summary_payload["articles"] == [
+        {
+            "event_model_payload": {
+                "title": "Bordeaux 2024 Vintage Outlook",
+                "published_date": "2024-03-15T09:30:00+00:00",
+                "source_url": "https://example.com/bordeaux-2024",
+            }
+        }
+    ]
+
+
+def test_generate_report_skips_articles_key_when_ontology_empty(
+    tmp_path, monkeypatch
+) -> None:
+    """When Article.ontology is the default empty dict (zero-regression path
+    for the 24 standard radars), the summary JSON must not include `articles`."""
+    fixed_now = datetime(2024, 3, 15, 9, 30, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="game",
+        display_name="Game Radar",
+        sources=[],
+        entities=[],
+    )
+    legacy_articles = [
+        Article(
+            title="Zelda Launch",
+            link="https://example.com/zelda",
+            summary="Nintendo released a new Zelda trailer.",
+            published=fixed_now,
+            source="IGN",
+            category="game",
+            matched_entities={"Nintendo": ["nintendo"]},
+            collected_at=fixed_now,
+        ),
+        Article(
+            title="Xbox Update",
+            link="https://example.com/xbox",
+            summary="Xbox announced spring update.",
+            published=fixed_now,
+            source="GameSpot",
+            category="game",
+            matched_entities={"Xbox": ["xbox"]},
+            collected_at=fixed_now,
+        ),
+    ]
+    output_path = tmp_path / "reports" / "game_report.html"
+    generate_report(
+        category=category,
+        articles=legacy_articles,
+        output_path=output_path,
+        stats={"sources": 2, "collected": 2, "matched": 2, "window_days": 7},
+    )
+
+    summary_path = tmp_path / "reports" / "game_20240315_summary.json"
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert "articles" not in summary_payload
