@@ -49,7 +49,7 @@ jobs:
           path: dist/
 
       - name: Publish to GitHub Packages
-        if: ${{ github.event_name == 'push' || inputs.publish_to_packages }}
+        if: ${{ inputs.publish_to_packages }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
