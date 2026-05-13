@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radar-core"
-version = "0.3.1"
+version = "0.3.2"
 description = "Shared core library for Radar data collection platform"
 readme = "README.md"
 requires-python = ">=3.11"

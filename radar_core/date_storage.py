@@ -109,7 +109,18 @@ def apply_date_storage_policy(
     keep_report_days: int,
     snapshot_db: bool,
     keep_snapshot_days: int = 30,
+    run_id: str | None = None,
 ) -> dict[str, object]:
+    """Apply the standard retention + snapshot routine.
+
+    If ``run_id`` is not supplied, a fresh one is generated via
+    ``radar_core.lineage.make_run_id`` so every workflow tick has a
+    traceable identifier without each radar wiring it manually.
+    """
+    from .lineage import get_radar_core_version, make_run_id
+
+    if run_id is None:
+        run_id = make_run_id()
     snapshot_path = snapshot_database(database_path) if snapshot_db else None
     raw_removed = cleanup_date_directories(raw_data_dir, keep_days=keep_raw_days)
     report_removed = cleanup_dated_reports(report_dir, keep_days=keep_report_days)
@@ -120,4 +131,6 @@ def apply_date_storage_policy(
         "raw_removed": raw_removed,
         "report_removed": report_removed,
         "snapshots_removed": snapshots_removed,
+        "run_id": run_id,
+        "collector_version": get_radar_core_version(),
     }
