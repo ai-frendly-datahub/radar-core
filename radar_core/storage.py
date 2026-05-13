@@ -74,14 +74,20 @@ class RadarStorage:
     ) -> None:
         now = _utc_naive(datetime.now(UTC))
         fetched_at = now if (run_id or collector_version or fetch_status) else None
+        from .url_utils import canonical_url
+
         rows: list[tuple[object, ...]] = []
         for article in articles:
+            # Canonicalize link for deduplication (strips utm_*, normalizes
+            # scheme/host/port/path/query/fragment). Falls back to the
+            # original link if the helper returns empty.
+            link = canonical_url(article.link) or article.link
             rows.append(
                 (
                     article.category,
                     article.source,
                     article.title,
-                    article.link,
+                    link,
                     article.summary,
                     _utc_naive(article.published),
                     now,
