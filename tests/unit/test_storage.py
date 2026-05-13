@@ -84,6 +84,55 @@ def _make_article(
     )
 
 
+def test_compute_cluster_ids_groups_similar_titles(tmp_duckdb: Path) -> None:
+    storage = RadarStorage(tmp_duckdb)
+    published = datetime.now(UTC) - timedelta(hours=1)
+    articles = [
+        _make_article(
+            title="AI safety regulation passes US senate today",
+            link="https://example.com/a1",
+            summary="",
+            published=published,
+        ),
+        _make_article(
+            title="AI safety regulation passes US senate today nytimes",
+            link="https://example.com/a2",
+            summary="",
+            published=published,
+        ),
+        _make_article(
+            title="Completely unrelated mortgage rates news Korea",
+            link="https://example.com/b1",
+            summary="",
+            published=published,
+        ),
+    ]
+    try:
+        storage.upsert_articles(articles)
+        cast_storage = cast(object, storage)
+        updated = getattr(cast_storage, "compute_cluster_ids")(  # noqa: B009
+            category="tech",
+            days=7,
+            threshold=0.7,
+        )
+        rows = storage.conn.execute(  # type: ignore[attr-defined]
+            "SELECT link, cluster_id FROM articles ORDER BY link"
+        ).fetchall()
+    finally:
+        storage.close()
+
+    assert updated == 3
+    cluster_by_link = {str(link): str(cid) for link, cid in rows}
+    assert (
+        cluster_by_link["https://example.com/a1"]
+        == cluster_by_link["https://example.com/a2"]
+    )
+    assert (
+        cluster_by_link["https://example.com/b1"]
+        != cluster_by_link["https://example.com/a1"]
+    )
+
+
 def test_upsert_articles_inserts_new_article(
     tmp_duckdb: Path, sample_article: object
 ) -> None:

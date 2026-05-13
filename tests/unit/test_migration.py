@@ -123,6 +123,7 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
         "v001_lineage_columns",
         "v002_crawl_health",
         "v003_article_ontology",
+        "v004_cluster_id",
     ]
     assert second_applied == []
 

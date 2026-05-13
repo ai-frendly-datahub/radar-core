@@ -94,10 +94,27 @@ def _migration_v003_article_ontology(conn: duckdb.DuckDBPyConnection) -> None:
         _ = conn.execute("ALTER TABLE articles ADD COLUMN ontology_json TEXT")
 
 
+def _migration_v004_cluster_id(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _table_exists(conn, "articles"):
+        return
+
+    table_info_rows = cast(
+        list[tuple[object, ...]],
+        conn.execute("PRAGMA table_info('articles')").fetchall(),
+    )
+    columns = {str(row[1]) for row in table_info_rows}
+    if "cluster_id" not in columns:
+        _ = conn.execute("ALTER TABLE articles ADD COLUMN cluster_id TEXT")
+        _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles (cluster_id)"
+        )
+
+
 _MIGRATIONS: tuple[tuple[str, MigrationFn], ...] = (
     ("v001_lineage_columns", _migration_v001_lineage_columns),
     ("v002_crawl_health", _migration_v002_crawl_health),
     ("v003_article_ontology", _migration_v003_article_ontology),
+    ("v004_cluster_id", _migration_v004_cluster_id),
 )
 
 
@@ -112,6 +129,7 @@ def _repair_schema(conn: duckdb.DuckDBPyConnection) -> None:
         return
     _migration_v001_lineage_columns(conn)
     _migration_v003_article_ontology(conn)
+    _migration_v004_cluster_id(conn)
 
 
 def migrate(conn: duckdb.DuckDBPyConnection) -> list[str]:

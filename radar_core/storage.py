@@ -210,6 +210,80 @@ class RadarStorage:
             )
         return results
 
+    def compute_cluster_ids(
+        self,
+        category: str | None = None,
+        *,
+        days: int = 7,
+        threshold: float = 0.85,
+    ) -> int:
+        """Cluster recent article titles and persist a stable ``cluster_id``.
+
+        Reads titles in the window (optionally filtered to ``category``),
+        runs :func:`radar_core.dedup.cluster_titles`, then derives a
+        cross-run stable id per cluster by hashing the alphabetically-first
+        normalized representative title. Writes the result back to the
+        ``articles.cluster_id`` column.
+
+        Returns the number of rows updated.
+        """
+        import hashlib
+
+        from .dedup import cluster_titles, normalize_title
+
+        since = _utc_naive(datetime.now(UTC) - timedelta(days=days))
+        params: list[object] = [since]
+        sql = (
+            "SELECT link, title FROM articles "
+            "WHERE COALESCE(published, collected_at) >= ?"
+        )
+        if category:
+            sql += " AND category = ?"
+            params.append(category)
+        sql += " ORDER BY link"
+
+        rows = cast(
+            list[tuple[str, str]],
+            self.conn.execute(sql, params).fetchall(),
+        )
+        if not rows:
+            return 0
+
+        links = [str(r[0]) for r in rows]
+        titles = [str(r[1]) for r in rows]
+        cluster_local_ids = cluster_titles(titles, threshold=threshold)
+
+        members: dict[int, list[str]] = {}
+        for cid, title in zip(cluster_local_ids, titles, strict=True):
+            members.setdefault(cid, []).append(title)
+
+        stable_ids: dict[int, str] = {}
+        for cid, member_titles in members.items():
+            reps = sorted(
+                (" ".join(normalize_title(t)) for t in member_titles if t),
+                key=lambda s: (len(s), s),
+            )
+            seed = reps[0] if reps else f"cluster-{cid}"
+            stable_ids[cid] = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+
+        updates = [
+            (stable_ids[cid], link)
+            for cid, link in zip(cluster_local_ids, links, strict=True)
+        ]
+        try:
+            _ = self.conn.executemany(
+                "UPDATE articles SET cluster_id = ? WHERE link = ?",
+                updates,
+            )
+            _ = self.conn.commit()
+        except duckdb.Error as exc:
+            try:
+                _ = self.conn.rollback()
+            except duckdb.Error:
+                pass
+            raise StorageError("Failed to write cluster ids") from exc
+        return len(updates)
+
     def delete_older_than(self, days: int) -> int:
         cutoff = _utc_naive(datetime.now(UTC) - timedelta(days=days))
         count_row = self.conn.execute(

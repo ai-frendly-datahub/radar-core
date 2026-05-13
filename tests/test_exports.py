@@ -3,8 +3,8 @@ from __future__ import annotations
 import radar_core
 
 
-def test_version_is_0_2_0() -> None:
-    assert radar_core.__version__ == "0.2.0"
+def test_version_is_pinned() -> None:
+    assert radar_core.__version__ == "0.4.0"
 
 
 def test_all_models_importable_from_package() -> None:
