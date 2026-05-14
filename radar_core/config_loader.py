@@ -169,6 +169,60 @@ def load_category_config(
     )
 
 
+def filter_sources(
+    sources: list[Source],
+    *,
+    max_sources: int | None = None,
+    exclude_sources: tuple[str, ...] | list[str] = (),
+) -> list[Source]:
+    """Filter a list of sources by exclusion id/name and a hard max count.
+
+    - ``exclude_sources`` matches ``Source.id`` first, falling back to
+      ``Source.name`` (both compared after ``strip().lower()``). Empty ids
+      or names are ignored so an empty token never matches everything.
+    - ``max_sources``, if a positive int, truncates the list AFTER exclusion.
+      ``None`` or values ``<= 0`` disable the cap (no-op).
+    - Preserves original order. Never mutates the input list.
+
+    Args:
+        sources: Source list to filter (typically ``CategoryConfig.sources``).
+        max_sources: Optional positive int cap applied after exclusion.
+        exclude_sources: Iterable of source ids or display names to skip.
+
+    Returns:
+        A new ``list[Source]`` with excluded entries removed and capped.
+    """
+    excluded_tokens: set[str] = set()
+    if exclude_sources:
+        for token in exclude_sources:
+            if not isinstance(token, str):
+                continue
+            normalized = token.strip().lower()
+            if normalized:
+                excluded_tokens.add(normalized)
+
+    filtered: list[Source]
+    if excluded_tokens:
+        filtered = []
+        for source in sources:
+            source_id = (source.id or "").strip().lower()
+            source_name = (source.name or "").strip().lower()
+            match_token = source_id if source_id else source_name
+            if match_token and match_token in excluded_tokens:
+                continue
+            # Also allow exclusion by name even when id is present.
+            if source_name and source_name in excluded_tokens:
+                continue
+            filtered.append(source)
+    else:
+        filtered = list(sources)
+
+    if isinstance(max_sources, int) and max_sources > 0:
+        filtered = filtered[:max_sources]
+
+    return filtered
+
+
 def _parse_source(entry: dict[str, object]) -> Source:
     if not entry:
         raise ValueError("Empty source entry in category config")

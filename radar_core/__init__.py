@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from .adaptive_throttle import AdaptiveThrottler, SourceThrottleState
 from .analyzer import apply_entity_rules
-from .config_loader import load_category_config, load_notification_config, load_settings
+from .config_loader import (
+    filter_sources,
+    load_category_config,
+    load_notification_config,
+    load_settings,
+)
 from .collector import RateLimiter, collect_sources
 from .reddit_collector import collect_reddit_sources, collect_reddit_source
 from .crawl_health import CrawlHealthRecord, CrawlHealthStore
@@ -94,6 +99,7 @@ __all__ = [
     "ExtractedContent",
     "extract_url_content",
     "extract_url_content_safe",
+    "filter_sources",
     "get_logger",
     "Html2TextExtractor",
     "JinaExtractor",

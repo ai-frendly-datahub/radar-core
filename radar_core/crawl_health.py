@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import cast
@@ -43,13 +44,56 @@ class CrawlHealthStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.batch_size: int = batch_size
         self.failure_threshold: int = failure_threshold
-        self.conn: duckdb.DuckDBPyConnection = duckdb.connect(str(self.db_path))
+        self.conn: duckdb.DuckDBPyConnection = self._safe_connect(self.db_path)
 
         self._buffer: list[_HealthUpdate] = []
         self._buffer_lock = Lock()
         self._write_lock = Lock()
 
         self._ensure_tables()
+
+    @staticmethod
+    def _safe_connect(db_path: Path) -> duckdb.DuckDBPyConnection:
+        """Open a DuckDB connection, quarantining a corrupt WAL on failure.
+
+        Strategy:
+            1. Try ``duckdb.connect(str(db_path))`` once.
+            2. On ``duckdb.Error`` / ``IOError`` / ``OSError``, look for
+               ``<db_path>.wal``. If present, rename it to
+               ``<db_path>.wal.broken-<UTC>`` (never delete; operators may
+               want to inspect it). Then retry ``duckdb.connect`` exactly once.
+            3. If the second attempt also fails, the original exception is
+               re-raised so the caller sees the unfixed failure.
+
+        The happy path performs no extra IO beyond the first connect call.
+        """
+        try:
+            return duckdb.connect(str(db_path))
+        except (duckdb.Error, IOError, OSError) as exc:
+            wal_path = Path(str(db_path) + ".wal")
+            if not wal_path.exists():
+                raise
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+            quarantine_path = wal_path.with_name(
+                f"{wal_path.name}.broken-{timestamp}"
+            )
+            try:
+                wal_path.rename(quarantine_path)
+            except OSError:
+                # Quarantine failed; surface the original DuckDB exception so
+                # the operator can investigate without touching the WAL.
+                raise exc
+            print(
+                f"[radar_core.crawl_health] WAL quarantined: {wal_path} -> "
+                f"{quarantine_path} ({exc})",
+                file=sys.stderr,
+            )
+            try:
+                return duckdb.connect(str(db_path))
+            except (duckdb.Error, IOError, OSError):
+                # Re-raise the ORIGINAL connect failure so the operator
+                # sees the root cause that triggered quarantine.
+                raise exc
 
     def _ensure_tables(self) -> None:
         _ = migrate(self.conn)

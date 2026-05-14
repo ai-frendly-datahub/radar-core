@@ -78,6 +78,7 @@ def test_all_exports_match_public_api() -> None:
         "ExtractedContent",
         "extract_url_content",
         "extract_url_content_safe",
+        "filter_sources",
         "get_logger",
         "Html2TextExtractor",
         "JinaExtractor",
