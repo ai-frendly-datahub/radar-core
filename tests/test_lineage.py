@@ -7,12 +7,14 @@ import pytest
 from radar_core.lineage import get_radar_core_version, make_run_id
 
 
-def test_make_run_id_default_format() -> None:
+def test_make_run_id_default_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
     rid = make_run_id()
     assert re.match(r"^radar-\d{8}T\d{6}Z-[0-9a-f]{8}$", rid), rid
 
 
-def test_make_run_id_with_prefix() -> None:
+def test_make_run_id_with_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
     rid = make_run_id("blogradar")
     assert rid.startswith("blogradar-")
 
