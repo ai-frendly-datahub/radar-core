@@ -31,6 +31,36 @@ class RadarStorage:
     def close(self) -> None:
         self.conn.close()
 
+    def _validate_ontology(
+        self,
+        articles: list[Article],
+        *,
+        repo_name: str,
+        strict: bool,
+        violations: list[dict[str, object]] | None,
+    ) -> None:
+        from .ontology import load_runtime_contract, validate_article_ontology
+
+        contract = load_runtime_contract(repo_name, search_from=self.db_path)
+        if contract is None:
+            return
+        for article in articles:
+            errors = validate_article_ontology(article.ontology, contract=contract)
+            if not errors:
+                continue
+            record: dict[str, object] = {
+                "repo": repo_name,
+                "link": article.link,
+                "source": article.source,
+                "errors": list(errors),
+            }
+            if violations is not None:
+                violations.append(record)
+            if strict:
+                raise StorageError(
+                    f"ontology validation failed for {article.link!r}: {errors}"
+                )
+
     def __enter__(self) -> RadarStorage:
         return self
 
@@ -71,7 +101,19 @@ class RadarStorage:
         run_id: str | None = None,
         collector_version: str | None = None,
         fetch_status: str | None = None,
+        repo_name: str | None = None,
+        strict_ontology: bool = False,
+        ontology_violations: list[dict[str, object]] | None = None,
     ) -> None:
+        articles = list(articles)
+        if repo_name:
+            self._validate_ontology(
+                articles,
+                repo_name=repo_name,
+                strict=strict_ontology,
+                violations=ontology_violations,
+            )
+
         now = _utc_naive(datetime.now(UTC))
         fetched_at = now if (run_id or collector_version or fetch_status) else None
         from .url_utils import canonical_url

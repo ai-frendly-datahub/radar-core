@@ -273,3 +273,106 @@ def test_article_without_published_uses_collected_at(storage: RadarStorage) -> N
     results = storage.recent_articles("test", days=7)
 
     assert len(results) == 1
+
+
+def _write_ontology_contract(runtime_dir, monkeypatch, repo_name="OntologyRadar"):
+    import json
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    contract = {
+        "repo": repo_name,
+        "category": "ontology_test",
+        "ontology_version": "0.1.0",
+        "event_model_mappings": {
+            "editorial_coverage": "test.editorial_coverage",
+        },
+        "source_role_mappings": {
+            "ApprovedSource": "primary_evidence",
+        },
+        "event_model_field_specs": {
+            "editorial_coverage": {
+                "ontology_id": "test.editorial_coverage",
+                "required_fields": ["source_url", "headline"],
+                "optional_fields": [],
+                "field_enums": {},
+            }
+        },
+    }
+    (runtime_dir / f"{repo_name}.json").write_text(json.dumps(contract))
+    monkeypatch.setenv("RADAR_ONTOLOGY_RUNTIME_DIR", str(runtime_dir))
+
+
+def test_upsert_articles_passes_when_ontology_payload_complete(
+    storage: RadarStorage, tmp_path: Path, monkeypatch
+) -> None:
+    _write_ontology_contract(tmp_path / "runtime_contracts", monkeypatch)
+    article = _make_article(link="https://example.com/ok")
+    article.source = "ApprovedSource"
+    article.ontology = {
+        "event_model_id": "test.editorial_coverage",
+        "source_role_id": "primary_evidence",
+        "event_model_payload": {
+            "source_url": "https://example.com/ok",
+            "headline": "A title",
+        },
+    }
+    violations: list[dict[str, object]] = []
+    storage.upsert_articles(
+        [article],
+        repo_name="OntologyRadar",
+        ontology_violations=violations,
+    )
+    assert violations == []
+
+
+def test_upsert_articles_records_violation_without_raising_when_lax(
+    storage: RadarStorage, tmp_path: Path, monkeypatch
+) -> None:
+    _write_ontology_contract(tmp_path / "runtime_contracts", monkeypatch)
+    article = _make_article(link="https://example.com/lax")
+    article.ontology = {
+        "event_model_id": "test.editorial_coverage",
+        "event_model_payload": {"source_url": "https://example.com/lax"},
+    }
+    violations: list[dict[str, object]] = []
+    storage.upsert_articles(
+        [article],
+        repo_name="OntologyRadar",
+        ontology_violations=violations,
+    )
+    # Article still persisted (lax mode), but the violation was captured.
+    assert len(violations) == 1
+    assert violations[0]["link"] == "https://example.com/lax"
+    assert any("headline" in e for e in violations[0]["errors"])  # type: ignore[arg-type]
+    results = storage.recent_articles("test", days=365)
+    assert len(results) == 1
+
+
+def test_upsert_articles_strict_mode_raises_on_violation(
+    storage: RadarStorage, tmp_path: Path, monkeypatch
+) -> None:
+    _write_ontology_contract(tmp_path / "runtime_contracts", monkeypatch)
+    article = _make_article(link="https://example.com/strict")
+    article.ontology = {"event_model_id": "test.UNKNOWN_event"}
+    from radar_core.exceptions import StorageError
+
+    with pytest.raises(StorageError) as exc_info:
+        storage.upsert_articles(
+            [article],
+            repo_name="OntologyRadar",
+            strict_ontology=True,
+        )
+    assert "ontology validation failed" in str(exc_info.value).lower()
+    # In strict mode the write must NOT have happened.
+    assert storage.recent_articles("test", days=365) == []
+
+
+def test_upsert_articles_skips_validation_without_repo_name(
+    storage: RadarStorage, tmp_path: Path, monkeypatch
+) -> None:
+    _write_ontology_contract(tmp_path / "runtime_contracts", monkeypatch)
+    article = _make_article(link="https://example.com/no-name")
+    article.ontology = {"event_model_id": "test.UNKNOWN_event"}
+    violations: list[dict[str, object]] = []
+    # repo_name omitted -> validator is not invoked.
+    storage.upsert_articles([article], ontology_violations=violations)
+    assert violations == []

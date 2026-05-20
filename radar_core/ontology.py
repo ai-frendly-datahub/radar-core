@@ -293,6 +293,76 @@ def get_event_model_field_spec(
     }
 
 
+def validate_article_ontology(
+    article_ontology: Mapping[str, Any] | None,
+    *,
+    contract: Mapping[str, Any],
+) -> list[str]:
+    """Return contract violations for an article-level ontology dict (empty = valid).
+
+    Checks performed:
+    - `event_model_id` (if present) must appear in `contract.event_model_mappings.values()`.
+    - `source_role_id` (if present) must appear in `contract.source_role_mappings.values()`.
+    - If `event_model_payload` is set, every `required_fields` entry from the matching
+      `event_model_field_specs[event_model_key]` must be present.
+
+    Articles with no ontology dict, or with no `event_model_id` (e.g. legacy emitters
+    that have not yet attached ontology metadata), are reported as valid so the
+    validator does not block partial rollouts.
+    """
+    if not article_ontology:
+        return []
+
+    errors: list[str] = []
+
+    em_mappings = (
+        contract.get("event_model_mappings")
+        if isinstance(contract.get("event_model_mappings"), Mapping)
+        else {}
+    )
+    role_mappings = (
+        contract.get("source_role_mappings")
+        if isinstance(contract.get("source_role_mappings"), Mapping)
+        else {}
+    )
+    field_specs = (
+        contract.get("event_model_field_specs")
+        if isinstance(contract.get("event_model_field_specs"), Mapping)
+        else {}
+    )
+
+    em_id = str(article_ontology.get("event_model_id") or "").strip()
+    if em_id:
+        if em_id not in set(em_mappings.values()):
+            errors.append(
+                f"event_model_id {em_id!r} not declared in contract.event_model_mappings"
+            )
+
+    role_id = str(article_ontology.get("source_role_id") or "").strip()
+    if role_id:
+        if role_id not in set(role_mappings.values()):
+            errors.append(
+                f"source_role_id {role_id!r} not declared in contract.source_role_mappings"
+            )
+
+    em_payload = article_ontology.get("event_model_payload")
+    if em_payload and em_id:
+        matching_keys = [k for k, v in em_mappings.items() if v == em_id]
+        if matching_keys and isinstance(em_payload, Mapping):
+            spec = field_specs.get(matching_keys[0])
+            if isinstance(spec, Mapping):
+                required_fields = spec.get("required_fields") or []
+                if isinstance(required_fields, list):
+                    for field_name in required_fields:
+                        if field_name and field_name not in em_payload:
+                            errors.append(
+                                f"event_model_payload missing required field "
+                                f"{field_name!r} for {em_id!r}"
+                            )
+
+    return errors
+
+
 def build_article_ontology_metadata(
     repo_name: str,
     *,

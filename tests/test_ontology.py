@@ -1326,3 +1326,97 @@ def test_build_event_model_payload_dict_input_canonical_extractors(
         "source_url": "https://x.example/news/1",
         "summary": "S",
     }
+
+
+def test_validate_article_ontology_accepts_empty_or_legacy_payload() -> None:
+    from radar_core.ontology import validate_article_ontology
+
+    contract = {
+        "event_model_mappings": {"editorial_coverage": "art.editorial_coverage"},
+        "source_role_mappings": {"YTN": "primary_evidence"},
+        "event_model_field_specs": {
+            "editorial_coverage": {
+                "ontology_id": "art.editorial_coverage",
+                "required_fields": ["source_url"],
+            }
+        },
+    }
+    # Empty ontology dict -> no validation errors (legacy emitters tolerated).
+    assert validate_article_ontology({}, contract=contract) == []
+    assert validate_article_ontology(None, contract=contract) == []
+
+
+def test_validate_article_ontology_rejects_unknown_event_model_id() -> None:
+    from radar_core.ontology import validate_article_ontology
+
+    contract = {
+        "event_model_mappings": {"editorial_coverage": "art.editorial_coverage"},
+        "source_role_mappings": {"YTN": "primary_evidence"},
+        "event_model_field_specs": {},
+    }
+    errors = validate_article_ontology(
+        {"event_model_id": "art.UNKNOWN_event"}, contract=contract
+    )
+    assert any("event_model_id" in e for e in errors)
+
+
+def test_validate_article_ontology_rejects_unknown_source_role_id() -> None:
+    from radar_core.ontology import validate_article_ontology
+
+    contract = {
+        "event_model_mappings": {},
+        "source_role_mappings": {"YTN": "primary_evidence"},
+    }
+    errors = validate_article_ontology(
+        {"source_role_id": "UNREGISTERED_ROLE"}, contract=contract
+    )
+    assert any("source_role_id" in e for e in errors)
+
+
+def test_validate_article_ontology_flags_missing_required_payload_fields() -> None:
+    from radar_core.ontology import validate_article_ontology
+
+    contract = {
+        "event_model_mappings": {"editorial_coverage": "art.editorial_coverage"},
+        "source_role_mappings": {},
+        "event_model_field_specs": {
+            "editorial_coverage": {
+                "ontology_id": "art.editorial_coverage",
+                "required_fields": ["source_url", "headline"],
+            }
+        },
+    }
+    errors = validate_article_ontology(
+        {
+            "event_model_id": "art.editorial_coverage",
+            "event_model_payload": {"source_url": "https://x.example/1"},
+        },
+        contract=contract,
+    )
+    assert any("headline" in e for e in errors)
+
+
+def test_validate_article_ontology_passes_complete_payload() -> None:
+    from radar_core.ontology import validate_article_ontology
+
+    contract = {
+        "event_model_mappings": {"editorial_coverage": "art.editorial_coverage"},
+        "source_role_mappings": {"YTN": "primary_evidence"},
+        "event_model_field_specs": {
+            "editorial_coverage": {
+                "ontology_id": "art.editorial_coverage",
+                "required_fields": ["source_url", "headline"],
+            }
+        },
+    }
+    assert validate_article_ontology(
+        {
+            "event_model_id": "art.editorial_coverage",
+            "source_role_id": "primary_evidence",
+            "event_model_payload": {
+                "source_url": "https://x.example/1",
+                "headline": "A title",
+            },
+        },
+        contract=contract,
+    ) == []
