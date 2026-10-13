@@ -110,6 +110,7 @@ def apply_date_storage_policy(
     snapshot_db: bool,
     keep_snapshot_days: int = 30,
     run_id: str | None = None,
+    max_bytes: int | None = None,
 ) -> dict[str, object]:
     """Apply the standard retention + snapshot routine.
 
@@ -117,10 +118,29 @@ def apply_date_storage_policy(
     ``radar_core.lineage.make_run_id`` so every workflow tick has a
     traceable identifier without each radar wiring it manually.
     """
+    from .db_compact import compact_duckdb_file
     from .lineage import get_radar_core_version, make_run_id
 
     if run_id is None:
         run_id = make_run_id()
+    # Compact before the snapshot copy so neither file crosses GitHub's limit.
+    # A compaction failure must not block the report that was already written.
+    try:
+        compact = compact_duckdb_file(database_path, max_bytes=max_bytes)
+    except Exception as exc:
+        from .logger import get_logger
+
+        get_logger(__name__).warning(
+            "duckdb_compact_failed",
+            path=str(database_path),
+            error=str(exc),
+        )
+        compact = {
+            "compacted": False,
+            "bytes": database_path.stat().st_size if database_path.exists() else 0,
+            "bytes_before": None,
+            "rows_deleted": 0,
+        }
     snapshot_path = snapshot_database(database_path) if snapshot_db else None
     raw_removed = cleanup_date_directories(raw_data_dir, keep_days=keep_raw_days)
     report_removed = cleanup_dated_reports(report_dir, keep_days=keep_report_days)
@@ -133,4 +153,8 @@ def apply_date_storage_policy(
         "snapshots_removed": snapshots_removed,
         "run_id": run_id,
         "collector_version": get_radar_core_version(),
+        "db_bytes": compact.get("bytes"),
+        "db_bytes_before": compact.get("bytes_before"),
+        "db_compacted": compact.get("compacted"),
+        "db_rows_deleted": compact.get("rows_deleted"),
     }

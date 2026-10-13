@@ -30,6 +30,21 @@ class RadarStorage:
 
     def close(self) -> None:
         self.conn.close()
+        # Collection already read the rows it will report. Shrink the file
+        # before the workflow commits it, so GitHub's 100 MiB limit does not
+        # reject the push.
+        try:
+            from .db_compact import compact_duckdb_file
+
+            compact_duckdb_file(self.db_path)
+        except Exception as exc:
+            from .logger import get_logger
+
+            get_logger(__name__).warning(
+                "duckdb_compact_failed",
+                path=str(self.db_path),
+                error=str(exc),
+            )
 
     def _validate_ontology(
         self,

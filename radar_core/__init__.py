@@ -11,6 +11,11 @@ from .config_loader import (
 from .collector import RateLimiter, collect_sources
 from .reddit_collector import collect_reddit_sources, collect_reddit_source
 from .crawl_health import CrawlHealthRecord, CrawlHealthStore
+from .db_compact import (
+    DEFAULT_DUCKDB_MAX_BYTES,
+    GITHUB_FILE_LIMIT_BYTES,
+    compact_duckdb_file,
+)
 from .exceptions import (
     NetworkError,
     NotificationError,
@@ -84,7 +89,10 @@ __all__ = [
     "get_event_model_field_spec",
     "CategoryConfig",
     "CompositeNotifier",
+    "compact_duckdb_file",
     "configure_logging",
+    "DEFAULT_DUCKDB_MAX_BYTES",
+    "GITHUB_FILE_LIMIT_BYTES",
     "collect_sources",
     "collect_reddit_source",
     "collect_reddit_sources",
