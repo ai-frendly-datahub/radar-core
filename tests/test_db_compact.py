@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,12 +14,25 @@ from radar_core.models import Article
 from radar_core.storage import RadarStorage
 
 
+def _blob(index: int, chars: int) -> str:
+    """High-entropy text so file size stays above the budget under compression."""
+    parts: list[str] = []
+    produced = 0
+    step = 0
+    while produced < chars:
+        digest = hashlib.sha256(f"{index}:{step}".encode()).hexdigest()
+        parts.append(digest)
+        produced += len(digest)
+        step += 1
+    return "".join(parts)[:chars]
+
+
 def _article(index: int, *, published: datetime) -> Article:
     # Unique text so DuckDB cannot compress the file back down to its allocation floor.
     return Article(
         title=f"article {index}",
         link=f"https://example.com/{index}",
-        summary=f"{index:08d}" * 400,
+        summary=_blob(index, 5000),
         published=published,
         source="test",
         category="test",
@@ -82,13 +96,13 @@ def test_stale_database_is_trimmed_not_emptied(tmp_path: Path) -> None:
     finally:
         storage.conn.close()
     before = path.stat().st_size
-    assert before > 2_000_000
+    assert before > 3_000_000
 
-    result = compact_duckdb_file(path, max_bytes=2_000_000, min_keep=40)
+    result = compact_duckdb_file(path, max_bytes=3_000_000, min_keep=40)
 
     assert result["compacted"] is True
     assert result["reason"] == "compacted"
-    assert int(result["bytes"]) <= 2_000_000
+    assert int(result["bytes"]) <= 3_000_000
     assert int(result["rows_deleted"]) < 800
 
     storage = RadarStorage(path)
@@ -230,8 +244,8 @@ def test_foreign_key_parent_is_kept_while_child_rows_trim(tmp_path: Path) -> Non
     assert scores is not None and 20 <= int(scores[0]) < 400
 
 
-def _fat(index: int, width: int = 240) -> str:
-    return f"{index:08d}" * width
+def _fat(index: int, chars: int = 8000) -> str:
+    return _blob(index, chars)
 
 
 def _stale_only_database(path: Path) -> datetime:
@@ -273,7 +287,7 @@ def _stale_only_database(path: Path) -> datetime:
         latest = max(latest, observed_at)
         conn.execute(
             "INSERT INTO readings VALUES (?, ?, ?)",
-            [index, observed_at, _fat(index, width=400)],
+            [index, observed_at, _fat(index)],
         )
     conn.execute("CHECKPOINT")
     conn.close()
@@ -324,7 +338,7 @@ def _append_only_scores(path: Path) -> datetime:
                 INSERT INTO price_scores (product_id, ts, radar_score, explanation)
                 VALUES (?, ?, ?, ?)
                 """,
-                [f"p{index}", ts, float(index), _fat(score_id, width=400)],
+                [f"p{index}", ts, float(index), _fat(score_id)],
             )
             score_id += 1
     conn.execute("CHECKPOINT")
@@ -336,13 +350,13 @@ def test_stale_only_tables_are_shrunk_under_budget_without_wiping(tmp_path: Path
     path = tmp_path / "stale_only.duckdb"
     latest = _stale_only_database(path)
     before = path.stat().st_size
-    assert before > 1_500_000
+    assert before > 2_500_000
 
-    result = compact_duckdb_file(path, max_bytes=1_500_000, min_keep=12)
+    result = compact_duckdb_file(path, max_bytes=2_500_000, min_keep=12)
 
     assert result["reason"] == "compacted"
     assert result["under_budget"] is True
-    assert int(result["bytes"]) <= 1_500_000
+    assert int(result["bytes"]) <= 2_500_000
     assert int(result["bytes"]) < before
     assert int(result["age_rows_deleted"]) == 0
     assert int(result["budget_rows_deleted"]) > 0
@@ -371,13 +385,13 @@ def test_append_only_scores_shrink_under_budget_and_keep_catalog(tmp_path: Path)
     path = tmp_path / "append_only.duckdb"
     latest = _append_only_scores(path)
     before = path.stat().st_size
-    assert before > 1_800_000
+    assert before > 3_000_000
 
-    result = compact_duckdb_file(path, max_bytes=1_800_000, min_keep=10)
+    result = compact_duckdb_file(path, max_bytes=3_000_000, min_keep=10)
 
     assert result["reason"] == "compacted"
     assert result["under_budget"] is True
-    assert int(result["bytes"]) <= 1_800_000
+    assert int(result["bytes"]) <= 3_000_000
     assert int(result["age_rows_deleted"]) == 0
     assert int(result["budget_rows_deleted"]) > 0
     tables = result["tables"]
@@ -421,17 +435,17 @@ def test_recent_append_only_table_still_fits_budget(tmp_path: Path) -> None:
     for index in range(500):
         conn.execute(
             "INSERT INTO price_scores VALUES (?, ?, ?)",
-            [index, newest - timedelta(hours=index % 36), _fat(index, width=280)],
+            [index, newest - timedelta(hours=index % 36), _fat(index)],
         )
     conn.execute("CHECKPOINT")
     conn.close()
     before = path.stat().st_size
-    assert before > 1_500_000
+    assert before > 2_500_000
 
-    result = compact_duckdb_file(path, max_bytes=1_500_000, min_keep=15)
+    result = compact_duckdb_file(path, max_bytes=2_500_000, min_keep=15)
 
     assert result["reason"] == "compacted"
-    assert int(result["bytes"]) <= 1_500_000
+    assert int(result["bytes"]) <= 2_500_000
     assert int(result["rows_deleted"]) > 0
     conn = duckdb.connect(str(path), read_only=True)
     try:
