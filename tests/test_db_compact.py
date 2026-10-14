@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,12 +14,25 @@ from radar_core.models import Article
 from radar_core.storage import RadarStorage
 
 
+def _blob(index: int, chars: int) -> str:
+    """High-entropy text so file size stays above the budget under compression."""
+    parts: list[str] = []
+    produced = 0
+    step = 0
+    while produced < chars:
+        digest = hashlib.sha256(f"{index}:{step}".encode()).hexdigest()
+        parts.append(digest)
+        produced += len(digest)
+        step += 1
+    return "".join(parts)[:chars]
+
+
 def _article(index: int, *, published: datetime) -> Article:
     # Unique text so DuckDB cannot compress the file back down to its allocation floor.
     return Article(
         title=f"article {index}",
         link=f"https://example.com/{index}",
-        summary=f"{index:08d}" * 400,
+        summary=_blob(index, 5000),
         published=published,
         source="test",
         category="test",
@@ -82,13 +96,13 @@ def test_stale_database_is_trimmed_not_emptied(tmp_path: Path) -> None:
     finally:
         storage.conn.close()
     before = path.stat().st_size
-    assert before > 2_000_000
+    assert before > 3_000_000
 
-    result = compact_duckdb_file(path, max_bytes=2_000_000, min_keep=40)
+    result = compact_duckdb_file(path, max_bytes=3_000_000, min_keep=40)
 
     assert result["compacted"] is True
     assert result["reason"] == "compacted"
-    assert int(result["bytes"]) <= 2_000_000
+    assert int(result["bytes"]) <= 3_000_000
     assert int(result["rows_deleted"]) < 800
 
     storage = RadarStorage(path)
@@ -228,3 +242,244 @@ def test_foreign_key_parent_is_kept_while_child_rows_trim(tmp_path: Path) -> Non
         conn.close()
     assert products is not None and int(products[0]) == 20
     assert scores is not None and 20 <= int(scores[0]) < 400
+
+
+def _fat(index: int, chars: int = 8000) -> str:
+    return _blob(index, chars)
+
+
+def _stale_only_database(path: Path) -> datetime:
+    """Two tables whose newest row is years outside every age cutoff.
+
+    ``notes`` is small. ``readings`` is the append-only bulk and spans many
+    fixed days in 2024, so the latest day is not the whole table.
+    """
+    conn = duckdb.connect(str(path))
+    conn.execute(
+        """
+        CREATE TABLE notes (
+            note_id INTEGER PRIMARY KEY,
+            observed_at TIMESTAMP,
+            body VARCHAR
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE readings (
+            reading_id INTEGER PRIMARY KEY,
+            observed_at TIMESTAMP,
+            payload VARCHAR
+        )
+        """
+    )
+    for index in range(5):
+        conn.execute(
+            "INSERT INTO notes VALUES (?, ?, ?)",
+            [index, datetime(2024, 1, 1, 0, 0, index), f"note-{index}"],
+        )
+    latest = datetime(2024, 1, 1, 8, 0, 0)
+    for index in range(600):
+        observed_at = datetime(2024, 1, 1, 8, 0, 0) + timedelta(
+            days=index // 4,
+            minutes=index % 4,
+        )
+        latest = max(latest, observed_at)
+        conn.execute(
+            "INSERT INTO readings VALUES (?, ?, ?)",
+            [index, observed_at, _fat(index)],
+        )
+    conn.execute("CHECKPOINT")
+    conn.close()
+    return latest
+
+
+def _append_only_scores(path: Path) -> datetime:
+    """PriceRadar-shaped catalog plus one score row per product per day.
+
+    Every timestamp is fixed in 2024, so the age pass must skip the file.
+    ``price_scores`` holds the bytes; ``products`` is the parent catalog.
+    """
+    latest = datetime(2024, 3, 30, 8, 0, 0)
+    conn = duckdb.connect(str(path))
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS score_seq START 1")
+    conn.execute(
+        """
+        CREATE TABLE products (
+            product_id VARCHAR PRIMARY KEY,
+            title VARCHAR NOT NULL,
+            first_seen TIMESTAMP,
+            last_updated TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE price_scores (
+            score_id INTEGER PRIMARY KEY DEFAULT nextval('score_seq'),
+            product_id VARCHAR NOT NULL REFERENCES products(product_id),
+            ts TIMESTAMP,
+            radar_score DOUBLE NOT NULL,
+            explanation VARCHAR
+        )
+        """
+    )
+    for index in range(24):
+        conn.execute(
+            "INSERT INTO products VALUES (?, ?, ?, ?)",
+            [f"p{index}", f"product {index}", datetime(2024, 3, 1), datetime(2024, 3, 1)],
+        )
+    score_id = 0
+    for day in range(30):
+        ts = datetime(2024, 3, 1, 8, 0, 0) + timedelta(days=day)
+        for index in range(24):
+            conn.execute(
+                """
+                INSERT INTO price_scores (product_id, ts, radar_score, explanation)
+                VALUES (?, ?, ?, ?)
+                """,
+                [f"p{index}", ts, float(index), _fat(score_id)],
+            )
+            score_id += 1
+    conn.execute("CHECKPOINT")
+    conn.close()
+    return latest
+
+
+def test_stale_only_tables_are_shrunk_under_budget_without_wiping(tmp_path: Path) -> None:
+    path = tmp_path / "stale_only.duckdb"
+    latest = _stale_only_database(path)
+    before = path.stat().st_size
+    assert before > 2_500_000
+
+    result = compact_duckdb_file(path, max_bytes=2_500_000, min_keep=12)
+
+    assert result["reason"] == "compacted"
+    assert result["under_budget"] is True
+    assert int(result["bytes"]) <= 2_500_000
+    assert int(result["bytes"]) < before
+    assert int(result["age_rows_deleted"]) == 0
+    assert int(result["budget_rows_deleted"]) > 0
+    tables = result["tables"]
+    assert isinstance(tables, dict)
+    readings = tables["readings"]
+    assert int(readings["rows_deleted"]) > 0
+    assert int(readings["rows_after"]) >= 12
+    assert "notes" not in tables
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        notes = conn.execute("SELECT COUNT(*) FROM notes").fetchone()
+        kept = conn.execute(
+            "SELECT COUNT(*), MAX(observed_at) FROM readings"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert notes is not None and int(notes[0]) == 5
+    assert kept is not None
+    assert 12 <= int(kept[0]) < 600
+    assert kept[1] == latest
+
+
+def test_append_only_scores_shrink_under_budget_and_keep_catalog(tmp_path: Path) -> None:
+    path = tmp_path / "append_only.duckdb"
+    latest = _append_only_scores(path)
+    before = path.stat().st_size
+    assert before > 3_000_000
+
+    result = compact_duckdb_file(path, max_bytes=3_000_000, min_keep=10)
+
+    assert result["reason"] == "compacted"
+    assert result["under_budget"] is True
+    assert int(result["bytes"]) <= 3_000_000
+    assert int(result["age_rows_deleted"]) == 0
+    assert int(result["budget_rows_deleted"]) > 0
+    tables = result["tables"]
+    assert isinstance(tables, dict)
+    assert int(tables["price_scores"]["rows_deleted"]) > 0
+    assert "products" not in tables
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        products = conn.execute("SELECT COUNT(*) FROM products").fetchone()
+        scores = conn.execute(
+            "SELECT COUNT(*), MAX(ts) FROM price_scores"
+        ).fetchone()
+        latest_products = conn.execute(
+            "SELECT COUNT(DISTINCT product_id) FROM price_scores WHERE ts = ?",
+            [latest],
+        ).fetchone()
+    finally:
+        conn.close()
+    assert products is not None and int(products[0]) == 24
+    assert scores is not None
+    assert 10 <= int(scores[0]) < 24 * 30
+    assert scores[1] == latest
+    assert latest_products is not None and int(latest_products[0]) == 24
+
+
+def test_recent_append_only_table_still_fits_budget(tmp_path: Path) -> None:
+    """Rows inside the 7-day report window are trimmed once age cuts are not enough."""
+    path = tmp_path / "recent_append.duckdb"
+    conn = duckdb.connect(str(path))
+    conn.execute(
+        """
+        CREATE TABLE price_scores (
+            score_id INTEGER PRIMARY KEY,
+            ts TIMESTAMP,
+            explanation VARCHAR
+        )
+        """
+    )
+    newest = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2)
+    for index in range(500):
+        conn.execute(
+            "INSERT INTO price_scores VALUES (?, ?, ?)",
+            [index, newest - timedelta(hours=index % 36), _fat(index)],
+        )
+    conn.execute("CHECKPOINT")
+    conn.close()
+    before = path.stat().st_size
+    assert before > 2_500_000
+
+    result = compact_duckdb_file(path, max_bytes=2_500_000, min_keep=15)
+
+    assert result["reason"] == "compacted"
+    assert int(result["bytes"]) <= 2_500_000
+    assert int(result["rows_deleted"]) > 0
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        kept = conn.execute("SELECT COUNT(*), MAX(ts) FROM price_scores").fetchone()
+    finally:
+        conn.close()
+    assert kept is not None
+    assert 15 <= int(kept[0]) < 500
+    assert kept[1] == newest
+
+
+def test_invalid_database_does_not_raise(tmp_path: Path) -> None:
+    path = tmp_path / "not-a-database.duckdb"
+    payload = b"not a duckdb file\n" * 100_000
+    path.write_bytes(payload)
+
+    result = compact_duckdb_file(path, max_bytes=1_000)
+
+    assert result["compacted"] is False
+    assert result["reason"] == "error"
+    assert "error" in result
+    assert path.read_bytes() == payload
+
+
+def test_compact_disabled_leaves_over_budget_file(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.setenv("RADAR_DUCKDB_COMPACT", "0")  # type: ignore[attr-defined]
+    monkeypatch.setenv("RADAR_DUCKDB_MAX_BYTES", "1000")  # type: ignore[attr-defined]
+    path = tmp_path / "disabled.duckdb"
+    _stale_only_database(path)
+    before = path.stat().st_size
+    assert before > 1_000
+
+    result = compact_duckdb_file(path)
+
+    assert result["compacted"] is False
+    assert result["reason"] == "within_limit"
+    assert path.stat().st_size == before
