@@ -9,6 +9,7 @@ file so the next commit stays under the limit.
 from __future__ import annotations
 
 import os
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -105,13 +106,12 @@ def compact_duckdb_file(
         rows_deleted += removed
         if removed <= 0:
             continue
-        new_size = _rewrite_inplace(path)
-        if new_size >= size:
-            size = new_size
-            break
-        size = new_size
+        # DuckDB's allocator can grow on the first rewrite. The cutoff list
+        # is finite, so keep going instead of treating that as a dead end.
+        size = _rewrite_inplace(path)
 
     for include_untimed in (False, True):
+        stalls = 0
         while size > budget:
             removed = _delete_oldest_fraction(
                 path,
@@ -124,10 +124,15 @@ def compact_duckdb_file(
             if removed <= 0:
                 break
             new_size = _rewrite_inplace(path)
-            if new_size >= size:
-                size = new_size
-                break
+            if new_size < size:
+                stalls = 0
+            else:
+                # One larger rewrite is normal. Two in a row means further
+                # deletes are not reclaiming space.
+                stalls += 1
             size = new_size
+            if stalls >= 2:
+                break
 
     return {
         "compacted": rows_deleted > 0,
@@ -154,6 +159,33 @@ def _is_temporal(data_type: str) -> bool:
 
 def _connect(path: Path) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(str(path))
+
+
+def _tables_in_delete_order(conn: duckdb.DuckDBPyConnection) -> list[str]:
+    """Child tables first, so a foreign key does not block the size trim.
+
+    Parent rows are attempted afterwards. A constraint failure on a parent
+    is skipped; the child rows that reference it are the usual bulk.
+    """
+    tables = _user_tables(conn)
+    referenced: set[str] = set()
+    try:
+        rows = conn.execute(
+            """
+            SELECT referenced_table
+            FROM duckdb_constraints()
+            WHERE constraint_type = 'FOREIGN KEY'
+              AND referenced_table IS NOT NULL
+            """
+        ).fetchall()
+    except duckdb.Error:
+        rows = []
+    for row in rows:
+        if row[0]:
+            referenced.add(str(row[0]))
+    children = [name for name in tables if name not in referenced]
+    parents = [name for name in tables if name in referenced]
+    return children + parents
 
 
 def _user_tables(conn: duckdb.DuckDBPyConnection) -> list[str]:
@@ -200,21 +232,38 @@ def _time_expr(columns: dict[str, str]) -> str | None:
 
 
 def _delete_older_than(path: Path, *, days: int) -> int:
+    """Delete rows older than ``days``.
+
+    A table whose newest row is already outside the window is left untouched.
+    Price history that has not been committed for months is still the only
+    history those radars have; the fractional trimmer drops just enough of
+    the oldest rows to fit the byte budget instead of emptying the file.
+    """
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
     conn = _connect(path)
     deleted = 0
     try:
-        for table in _user_tables(conn):
+        for table in _tables_in_delete_order(conn):
+            quoted = _quote_ident(table)
             expr = _time_expr(_columns(conn, table))
             if expr is None:
                 continue
-            before = conn.execute(f"SELECT COUNT(*) FROM {_quote_ident(table)}").fetchone()
-            before_count = int(before[0]) if before else 0
-            conn.execute(
-                f"DELETE FROM {_quote_ident(table)} WHERE {expr} < ?",
+            newer = conn.execute(
+                f"SELECT COUNT(*) FROM {quoted} WHERE {expr} >= ?",
                 [cutoff],
-            )
-            after = conn.execute(f"SELECT COUNT(*) FROM {_quote_ident(table)}").fetchone()
+            ).fetchone()
+            if newer is None or int(newer[0]) <= 0:
+                continue
+            before = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()
+            before_count = int(before[0]) if before else 0
+            try:
+                conn.execute(
+                    f"DELETE FROM {quoted} WHERE {expr} < ?",
+                    [cutoff],
+                )
+            except duckdb.ConstraintException:
+                continue
+            after = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()
             after_count = int(after[0]) if after else 0
             deleted += max(0, before_count - after_count)
         conn.execute("CHECKPOINT")
@@ -235,7 +284,7 @@ def _delete_oldest_fraction(
     conn = _connect(path)
     deleted = 0
     try:
-        for table in _user_tables(conn):
+        for table in _tables_in_delete_order(conn):
             columns = _columns(conn, table)
             expr = _time_expr(columns)
             if expr is None and not include_untimed:
@@ -249,30 +298,33 @@ def _delete_oldest_fraction(
             batch = min(batch, count - min_keep)
             if batch <= 0:
                 continue
-            if expr is None:
-                conn.execute(
-                    f"""
-                    DELETE FROM {quoted}
-                    WHERE rowid IN (
-                        SELECT rowid FROM {quoted}
-                        ORDER BY rowid ASC
-                        LIMIT {int(batch)}
+            try:
+                if expr is None:
+                    conn.execute(
+                        f"""
+                        DELETE FROM {quoted}
+                        WHERE rowid IN (
+                            SELECT rowid FROM {quoted}
+                            ORDER BY rowid ASC
+                            LIMIT {int(batch)}
+                        )
+                        """
                     )
-                    """
-                )
-            else:
-                conn.execute(
-                    f"""
-                    DELETE FROM {quoted}
-                    WHERE rowid IN (
-                        SELECT rowid FROM {quoted}
-                        WHERE {expr} < ?
-                        ORDER BY {expr} ASC NULLS FIRST
-                        LIMIT {int(batch)}
+                else:
+                    conn.execute(
+                        f"""
+                        DELETE FROM {quoted}
+                        WHERE rowid IN (
+                            SELECT rowid FROM {quoted}
+                            WHERE {expr} < ?
+                            ORDER BY {expr} ASC NULLS FIRST
+                            LIMIT {int(batch)}
+                        )
+                        """,
+                        [cutoff],
                     )
-                    """,
-                    [cutoff],
-                )
+            except duckdb.ConstraintException:
+                continue
             deleted += batch
         conn.execute("CHECKPOINT")
     finally:
@@ -280,13 +332,46 @@ def _delete_oldest_fraction(
     return deleted
 
 
+def _cleanup_rewrite_artifacts(*paths: Path) -> None:
+    for leftover in paths:
+        if leftover.is_dir():
+            shutil.rmtree(leftover, ignore_errors=True)
+        elif leftover.exists():
+            leftover.unlink()
+
+
+def _rewrite_via_export(path: Path, tmp: Path, export_dir: Path) -> None:
+    """Rebuild through SQL + Parquet so foreign keys survive the rewrite.
+
+    ``COPY FROM DATABASE`` inserts child tables before their parents and
+    rejects a database that declares foreign keys.
+    """
+    _cleanup_rewrite_artifacts(export_dir, tmp, Path(str(tmp) + ".wal"))
+    conn = _connect(path)
+    try:
+        conn.execute(f"EXPORT DATABASE {_sql_string(str(export_dir))} (FORMAT PARQUET)")
+        conn.execute("CHECKPOINT")
+    finally:
+        conn.close()
+    out = _connect(tmp)
+    try:
+        out.execute(f"IMPORT DATABASE {_sql_string(str(export_dir))}")
+        out.execute("CHECKPOINT")
+    except Exception:
+        out.close()
+        _cleanup_rewrite_artifacts(tmp, Path(str(tmp) + ".wal"))
+        raise
+    out.close()
+
+
 def _rewrite_inplace(path: Path) -> int:
     """Copy the database into a fresh file so DELETE reclaims disk space."""
     tmp = path.with_name(path.name + ".compacttmp")
-    if tmp.exists():
-        tmp.unlink()
+    export_dir = path.with_name(path.name + ".compactexport")
     wal = Path(str(tmp) + ".wal")
+    _cleanup_rewrite_artifacts(tmp, wal, export_dir)
     conn = _connect(path)
+    copied = False
     try:
         db_name = conn.execute("SELECT current_database()").fetchone()
         if db_name is None:
@@ -295,16 +380,17 @@ def _rewrite_inplace(path: Path) -> int:
         conn.execute(f"COPY FROM DATABASE {_quote_ident(str(db_name[0]))} TO compact_db")
         conn.execute("DETACH compact_db")
         conn.execute("CHECKPOINT")
+        copied = True
+    except duckdb.ConstraintException:
+        copied = False
     except Exception:
         conn.close()
-        if tmp.exists():
-            tmp.unlink()
-        if wal.exists():
-            wal.unlink()
+        _cleanup_rewrite_artifacts(tmp, wal, export_dir)
         raise
     conn.close()
+    if not copied:
+        _cleanup_rewrite_artifacts(tmp, wal)
+        _rewrite_via_export(path, tmp, export_dir)
     os.replace(tmp, path)
-    for leftover in (wal, Path(str(path) + ".wal")):
-        if leftover.exists():
-            leftover.unlink()
+    _cleanup_rewrite_artifacts(wal, Path(str(path) + ".wal"), export_dir)
     return path.stat().st_size
