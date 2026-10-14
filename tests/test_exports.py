@@ -4,7 +4,7 @@ import radar_core
 
 
 def test_version_is_pinned() -> None:
-    assert radar_core.__version__ == "0.4.0"
+    assert radar_core.__version__ == "0.4.1"
 
 
 def test_all_models_importable_from_package() -> None:
