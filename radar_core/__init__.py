@@ -25,6 +25,7 @@ from .exceptions import (
     SourceError,
     StorageError,
 )
+from .jsonutil import json_default, json_dumps
 from .logger import configure_logging, get_logger
 from .models import (
     Article,
@@ -111,6 +112,8 @@ __all__ = [
     "get_logger",
     "Html2TextExtractor",
     "JinaExtractor",
+    "json_default",
+    "json_dumps",
     "load_category_config",
     "load_notification_config",
     "load_settings",

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
@@ -162,3 +163,30 @@ def test_log_writes_ontology_metadata_when_present(tmp_path: Path) -> None:
         "event_model_id": "policy.enforcement_action",
         "source_role_id": "primary_evidence",
     }
+
+
+def test_log_serializes_datetime_inside_ontology(tmp_path: Path) -> None:
+    logger = RawLogger(tmp_path)
+    article = _make_article()
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+    article.ontology = {
+        "event_model_payload": {
+            "published": published,
+            "accepted_on": date(2026, 10, 14),
+            "score": Decimal("0.91"),
+            "categories": {"cs.LG", "cs.AI"},
+        }
+    }
+
+    output_path = logger.log([article], source_name="source")
+    parsed = cast(
+        dict[str, object],
+        json.loads(output_path.read_text(encoding="utf-8").splitlines()[0]),
+    )
+    ontology = cast(dict[str, object], parsed["ontology"])
+    payload = cast(dict[str, object], ontology["event_model_payload"])
+
+    assert payload["published"] == "2026-10-14T12:00:00+00:00"
+    assert payload["accepted_on"] == "2026-10-14"
+    assert payload["score"] == "0.91"
+    assert payload["categories"] == ["cs.AI", "cs.LG"]

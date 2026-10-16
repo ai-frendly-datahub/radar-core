@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .jsonutil import json_dumps
 from .models import Article
 
 
@@ -60,7 +61,7 @@ class RawLogger:
                 }
                 if article.ontology:
                     record["ontology"] = article.ontology
-                _ = handle.write(json.dumps(record, ensure_ascii=False))
+                _ = handle.write(json_dumps(record))
                 _ = handle.write("\n")
                 if run_id is not None:
                     existing_links.add(article.link)

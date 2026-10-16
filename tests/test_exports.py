@@ -85,6 +85,8 @@ def test_all_exports_match_public_api() -> None:
         "get_logger",
         "Html2TextExtractor",
         "JinaExtractor",
+        "json_default",
+        "json_dumps",
         "load_category_config",
         "load_notification_config",
         "load_settings",
