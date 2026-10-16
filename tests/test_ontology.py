@@ -439,6 +439,83 @@ def test_backfill_duckdb_ontology_attaches_event_model_payload(tmp_path, monkeyp
     assert "published_at" in payload  # extracted from `published` timestamp
 
 
+def test_backfill_duckdb_ontology_serializes_datetime_payload_field(
+    tmp_path, monkeypatch
+) -> None:
+    """A contract field named ``published`` copies the column datetime into metadata."""
+    import duckdb
+    from datetime import UTC, datetime
+
+    from radar_core.ontology import backfill_duckdb_ontology
+
+    runtime_dir = tmp_path / "runtime_contracts"
+    runtime_dir.mkdir(parents=True)
+    contract = {
+        "repo": "PaperRadar",
+        "category": "research",
+        "ontology_version": "0.1.0",
+        "event_model_mappings": {"paper_release": "paper.paper_release"},
+        "event_model_field_specs": {
+            "paper_release": {
+                "ontology_id": "paper.paper_release",
+                "required_fields": ["published"],
+                "optional_fields": [],
+            }
+        },
+    }
+    (runtime_dir / "PaperRadar.json").write_text(
+        json.dumps(contract, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    monkeypatch.setenv("RADAR_ONTOLOGY_RUNTIME_DIR", str(runtime_dir))
+
+    db_path = tmp_path / "papers.duckdb"
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+    with duckdb.connect(str(db_path)) as conn:
+        conn.execute(
+            "CREATE TABLE articles ("
+            " link VARCHAR PRIMARY KEY,"
+            " source VARCHAR,"
+            " title VARCHAR,"
+            " summary VARCHAR,"
+            " published TIMESTAMP,"
+            " ontology_json VARCHAR"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO articles VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                "https://example.com/paper",
+                "arXiv CS.AI",
+                "Example title",
+                "Example summary",
+                published,
+                None,
+            ],
+        )
+
+    sources = {
+        "arXiv CS.AI": type(
+            "SourceStub",
+            (),
+            {"config": {"event_model": "paper_release"}},
+        )(),
+    }
+    counts = backfill_duckdb_ontology(
+        db_path,
+        repo_name="PaperRadar",
+        sources_by_name=sources,
+        category_name="research",
+        attach_event_model_payload=True,
+    )
+
+    assert counts["updated"] == 1
+    with duckdb.connect(str(db_path), read_only=True) as conn:
+        row = conn.execute("SELECT ontology_json FROM articles").fetchone()
+    metadata = json.loads(row[0])
+    # DuckDB TIMESTAMP drops tzinfo, so the stored instant is a naive ISO string.
+    assert metadata["event_model_payload"]["published"] == "2026-10-14T12:00:00"
+
+
 def test_get_event_model_field_spec_reads_runtime_contract(tmp_path, monkeypatch) -> None:
     runtime_dir = tmp_path / "runtime_contracts"
     runtime_dir.mkdir(parents=True)

@@ -9,6 +9,7 @@ from typing import cast
 import duckdb
 
 from .exceptions import StorageError
+from .jsonutil import json_dumps
 from .migration import migrate
 from .models import Article
 
@@ -148,8 +149,8 @@ class RadarStorage:
                     article.summary,
                     _utc_naive(article.published),
                     now,
-                    json.dumps(article.matched_entities, ensure_ascii=False),
-                    json.dumps(article.ontology, ensure_ascii=False),
+                    json_dumps(article.matched_entities),
+                    json_dumps(article.ontology),
                     run_id,
                     collector_version,
                     fetch_status,

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 from typing import Protocol, cast
@@ -401,3 +402,44 @@ def test_recent_articles_restores_ontology_metadata(tmp_storage: object) -> None
         "event_model_id": "govsupport.application_deadline",
         "source_role_id": "operational_evidence",
     }
+
+
+def test_upsert_articles_serializes_datetime_in_ontology(tmp_duckdb: Path) -> None:
+    """PaperRadar stores a datetime on article.ontology and upsert must persist it.
+
+    The 2026-10-15 collector failed in ``json.dumps(article.ontology)`` because
+    event-model payloads can carry ``published`` as a datetime. date, Decimal,
+    and set values travel on the same object and must round-trip as JSON too.
+    """
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+    storage = RadarStorage(tmp_duckdb)
+    article = _make_article(
+        title="Datetime ontology",
+        link="https://example.com/datetime-ontology",
+        summary="ontology contains a datetime",
+        published=published,
+        ontology={
+            "repo": "PaperRadar",
+            "event_model_id": "paper.paper_release",
+            "event_model_payload": {
+                "published": published,
+                "accepted_on": date(2026, 10, 14),
+                "score": Decimal("0.91"),
+                "categories": {"cs.LG", "cs.AI"},
+            },
+        },
+    )
+
+    try:
+        storage.upsert_articles([article])
+        results = storage.recent_articles(category="tech", days=30)
+    finally:
+        storage.close()
+
+    assert len(results) == 1
+    payload = results[0].ontology["event_model_payload"]
+    assert isinstance(payload, dict)
+    assert payload["published"] == "2026-10-14T12:00:00+00:00"
+    assert payload["accepted_on"] == "2026-10-14"
+    assert payload["score"] == "0.91"
+    assert payload["categories"] == ["cs.AI", "cs.LG"]

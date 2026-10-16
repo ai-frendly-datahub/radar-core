@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
+from .jsonutil import json_dumps
+
 
 class EventModelFieldSpec(TypedDict):
     required_fields: list[str]
@@ -614,7 +616,7 @@ def backfill_duckdb_ontology(
                 if payload:
                     metadata["event_model_payload"] = payload
                     counts["with_event_model_payload"] += 1
-            new_payload = json.dumps(metadata, ensure_ascii=False)
+            new_payload = json_dumps(metadata)
             payload_changed = existing_ontology_json != new_payload
             has_event_model = bool(metadata.get("event_model_id"))
             if payload_changed:

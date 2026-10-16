@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
+from radar_core.jsonutil import json_dumps
 from radar_core.models import Article, CategoryConfig
 
 
@@ -330,7 +331,7 @@ def generate_index_html(
     rendered = template.render(
         radar_name=radar_name,
         reports=reports,
-        summaries_json=json.dumps(summaries, ensure_ascii=False),
+        summaries_json=json_dumps(summaries),
         generated_at=datetime.now(timezone.utc),
     )
     rendered = "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n"
@@ -425,7 +426,7 @@ def generate_summary_json(
 
     output_path = output_dir / f"{category_name}_{date_stamp}_summary.json"
     output_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2),
+        json_dumps(summary, indent=2),
         encoding="utf-8",
     )
     return output_path
