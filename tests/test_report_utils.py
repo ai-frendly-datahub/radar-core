@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 import pytest
 
+from jinja2 import Environment
+
 from radar_core.models import Article, CategoryConfig
 from radar_core.report_utils import (
+    _json_safe,
+    _report_environment,
     generate_index_html,
     generate_report,
     generate_summary_json,
@@ -899,3 +904,195 @@ def test_generate_report_skips_articles_key_when_ontology_empty(
     summary_path = tmp_path / "reports" / "game_20240315_summary.json"
     summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert "articles" not in summary_payload
+
+
+def test_generate_report_serializes_datetime_in_ontology_payload(
+    tmp_path, monkeypatch
+) -> None:
+    """PaperRadar leaves a datetime on event_model_payload.published.
+
+    The 2026-10-19 report failed in report.html ``articles_json|tojson`` after
+    storage had already learned to encode the same value. date, Decimal, and
+    set travel on that payload and must render as JSON too.
+    """
+    fixed_now = datetime(2026, 10, 19, 11, 25, tzinfo=timezone.utc)
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="research",
+        display_name="Paper Radar",
+        sources=[],
+        entities=[],
+    )
+    article = Article(
+        title="Datetime ontology report",
+        link="https://example.com/datetime-ontology",
+        summary="ontology payload contains a datetime",
+        published=published,
+        source="arXiv CS.LG",
+        category="research",
+        matched_entities={"cs.LG": ["learning"]},
+        collected_at=fixed_now,
+        ontology={
+            "repo": "PaperRadar",
+            "event_model_id": "paper.paper_release",
+            "event_model_payload": {
+                "title": "Datetime ontology report",
+                "source_url": "https://example.com/datetime-ontology",
+                "published": published,
+                "accepted_on": date(2026, 10, 14),
+                "score": Decimal("0.91"),
+                "categories": {"cs.LG", "cs.AI"},
+            },
+        },
+    )
+    output_path = tmp_path / "reports" / "research_report.html"
+    generate_report(
+        category=category,
+        articles=[article],
+        output_path=output_path,
+        stats={"sources": 1, "collected": 1, "matched": 1, "window_days": 7},
+    )
+
+    report_html = output_path.read_text(encoding="utf-8")
+    match = re.search(
+        r'<script id="articles-data" type="application/json">(.*?)</script>',
+        report_html,
+    )
+    assert match is not None
+    articles_payload = json.loads(match.group(1))
+    assert articles_payload[0]["event_model_payload"]["published"] == (
+        "2026-10-14T12:00:00+00:00"
+    )
+    assert articles_payload[0]["event_model_payload"]["accepted_on"] == "2026-10-14"
+    assert articles_payload[0]["event_model_payload"]["score"] == "0.91"
+    assert articles_payload[0]["event_model_payload"]["categories"] == [
+        "cs.AI",
+        "cs.LG",
+    ]
+    assert isinstance(article.ontology["event_model_payload"]["published"], datetime)
+
+    summary_payload = json.loads(
+        (tmp_path / "reports" / "research_20261019_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary_payload["articles"] == [
+        {
+            "event_model_payload": {
+                "title": "Datetime ontology report",
+                "source_url": "https://example.com/datetime-ontology",
+                "published": "2026-10-14T12:00:00+00:00",
+                "accepted_on": "2026-10-14",
+                "score": "0.91",
+                "categories": ["cs.AI", "cs.LG"],
+            }
+        }
+    ]
+
+
+def test_generate_report_tojson_encodes_datetime_article_fields(
+    tmp_path, monkeypatch
+) -> None:
+    """``|tojson`` on the article object itself must encode datetimes.
+
+    ``articles_json`` is normalized before render. ``matched_entities|list|tojson``
+    still serializes the live article field, which is the other report.html path.
+    """
+    fixed_now = datetime(2026, 10, 19, 11, 25, tzinfo=timezone.utc)
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("radar_core.report_utils.datetime", FixedDateTime)
+
+    category = CategoryConfig(
+        category_name="research",
+        display_name="Paper Radar",
+        sources=[],
+        entities=[],
+    )
+    article = Article(
+        title="Live datetime field",
+        link="https://example.com/live-datetime",
+        summary="matched entity list contains a datetime",
+        published=published,
+        source="arXiv CS.LG",
+        category="research",
+        matched_entities=[published],  # type: ignore[arg-type]
+        collected_at=fixed_now,
+    )
+    output_path = tmp_path / "reports" / "research_report.html"
+    generate_report(
+        category=category,
+        articles=[article],
+        output_path=output_path,
+        stats={"sources": 1, "collected": 1, "matched": 1, "window_days": 7},
+    )
+
+    report_html = output_path.read_text(encoding="utf-8")
+    assert "2026-10-14T12:00:00+00:00" in report_html
+    assert "Object of type datetime is not JSON serializable" not in report_html
+
+
+def test_report_environment_tojson_uses_json_default(tmp_path) -> None:
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+    env = _report_environment(tmp_path)
+    rendered = env.from_string(
+        "{{ reports|tojson }}|{{ payload|tojson }}"
+    ).render(
+        reports=[{"date": published, "filename": "research_20261019.html"}],
+        payload={
+            "published": published,
+            "accepted_on": date(2026, 10, 14),
+            "score": Decimal("0.91"),
+            "categories": {"cs.LG", "cs.AI"},
+        },
+    )
+    reports_json, payload_json = rendered.split("|", 1)
+    assert json.loads(reports_json) == [
+        {"date": "2026-10-14T12:00:00+00:00", "filename": "research_20261019.html"}
+    ]
+    assert json.loads(payload_json) == {
+        "accepted_on": "2026-10-14",
+        "categories": ["cs.AI", "cs.LG"],
+        "published": "2026-10-14T12:00:00+00:00",
+        "score": "0.91",
+    }
+
+    untouched = Environment()
+    assert "default" not in untouched.policies["json.dumps_kwargs"]
+
+
+def test_json_safe_normalizes_nested_datetimes_without_mutating_input() -> None:
+    published = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+    payload = {
+        "published": published,
+        "accepted_on": date(2026, 10, 14),
+        "score": Decimal("0.91"),
+        "categories": {"cs.LG", "cs.AI"},
+        "nested": [{"when": published}],
+    }
+    safe = _json_safe(payload)
+
+    assert safe["published"] == "2026-10-14T12:00:00+00:00"
+    assert safe["accepted_on"] == "2026-10-14"
+    assert safe["score"] == "0.91"
+    assert safe["categories"] == ["cs.AI", "cs.LG"]
+    assert safe["nested"] == [{"when": "2026-10-14T12:00:00+00:00"}]
+    assert payload["published"] is published
+    assert isinstance(payload["categories"], set)
