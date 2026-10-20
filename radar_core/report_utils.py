@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
-from radar_core.jsonutil import json_dumps
+from radar_core.jsonutil import json_default, json_dumps
 from radar_core.models import Article, CategoryConfig
 
 
@@ -96,6 +96,12 @@ def generate_report(
             if payload:
                 articles_json[-1]["event_model_payload"] = payload
 
+        # Copy into JSON-native values before the template's ``|tojson`` and
+        # the summary writer see the row. PaperRadar keeps ``published`` as a
+        # datetime inside ``event_model_payload``; the caller's ontology stays
+        # untouched.
+        articles_json[-1] = _json_safe(articles_json[-1])
+
         if isinstance(matched_entities_raw, dict):
             for entity_name, keywords in matched_entities_raw.items():
                 if not isinstance(entity_name, str) or not entity_name:
@@ -140,7 +146,7 @@ def generate_report(
     normalized_extra_sections = _normalize_extra_sections(extra_sections)
 
     templates_dir = Path(__file__).parent / "templates"
-    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    env = _report_environment(templates_dir)
     template = env.get_template("report.html")
 
     rendered = template.render(
@@ -325,7 +331,7 @@ def generate_index_html(
     reports = [entry[2] for entry in report_entries]
 
     templates_dir = Path(__file__).parent / "templates"
-    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    env = _report_environment(templates_dir)
     template = env.get_template("index.html")
 
     rendered = template.render(
@@ -430,6 +436,35 @@ def generate_summary_json(
         encoding="utf-8",
     )
     return output_path
+
+
+def _report_environment(templates_dir: Path) -> Environment:
+    """Jinja environment whose ``|tojson`` filter uses :func:`json_default`.
+
+    ``Environment.policies`` shallow-copies Jinja's defaults, and the shared
+    ``json.dumps_kwargs`` dict must be replaced rather than mutated.
+    """
+    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    dumps_kwargs = dict(env.policies.get("json.dumps_kwargs") or {})
+    dumps_kwargs["default"] = json_default
+    env.policies["json.dumps_kwargs"] = dumps_kwargs
+    return env
+
+
+def _json_safe(value: Any) -> Any:
+    """Deep-copy ``value`` into types ``json.dumps`` accepts.
+
+    ``datetime`` and ``date`` become ISO 8601 strings. ``Decimal`` becomes a
+    string. ``set`` and ``frozenset`` become lists. Nested containers are
+    copied so the input object is left unchanged.
+    """
+    if isinstance(value, Mapping):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return _json_safe(json_default(value))
 
 
 def _normalize_summary_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
