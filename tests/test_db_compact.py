@@ -223,7 +223,7 @@ def test_foreign_key_parent_is_kept_while_child_rows_trim(tmp_path: Path) -> Non
                 index,
                 str(index % 20),
                 now - timedelta(days=150, seconds=400 - index),
-                f"{index:04d}" * 200,
+                _blob(index, 5000),  # Keep the fixture above DuckDB's allocation floor.
             ],
         )
     conn.close()

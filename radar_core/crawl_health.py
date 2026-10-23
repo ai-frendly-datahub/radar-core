@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
+import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import cast
@@ -74,9 +76,7 @@ class CrawlHealthStore:
             if not wal_path.exists():
                 raise
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-            quarantine_path = wal_path.with_name(
-                f"{wal_path.name}.broken-{timestamp}"
-            )
+            quarantine_path = wal_path.with_name(f"{wal_path.name}.broken-{timestamp}")
             try:
                 wal_path.rename(quarantine_path)
             except OSError:
@@ -193,7 +193,8 @@ class CrawlHealthStore:
                         END,
                         disabled = CASE
                             WHEN crawl_health.disabled THEN TRUE
-                            WHEN crawl_health.failure_count + EXCLUDED.failure_count >= ? THEN TRUE
+                            WHEN EXCLUDED.failure_count > 0
+                                AND crawl_health.failure_count + EXCLUDED.failure_count >= ? THEN TRUE
                             ELSE EXCLUDED.disabled
                         END,
                         updated_at = NOW()
@@ -271,3 +272,77 @@ class CrawlHealthStore:
         if record is None:
             return False
         return record.disabled
+
+    def claim_retry(self, source_name: str, cooldown_seconds: float = 86400) -> bool:
+        """Reserve one caller-managed probe for a disabled transient HTTP source.
+
+        Opt-in only: ``is_disabled`` retains its existing meaning. The caller
+        must limit transport retries and call ``finish_retry`` only after valid
+        nonempty content. A claim stays disabled and advances ``updated_at``,
+        so failures, empty results and crashed probes wait another cooldown.
+        Legacy 401/403, unknown errors and missing timestamps fail closed.
+        """
+        if not math.isfinite(cooldown_seconds) or cooldown_seconds < 86400:
+            raise ValueError("crawl health cooldown must be at least 86400 seconds")
+        self.flush()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        cutoff = now - timedelta(seconds=cooldown_seconds)
+        try:
+            with self._write_lock:
+                row = self.conn.execute(
+                    "SELECT last_error FROM crawl_health WHERE source_name = ?",
+                    [source_name],
+                ).fetchone()
+                if not row or not re.match(
+                    r"^(408|429|500|502|503|504) (?:Client|Server) Error:",
+                    str(row[0] or ""),
+                ):
+                    return False
+                claimed = self.conn.execute(
+                    """
+                    UPDATE crawl_health SET updated_at = ?
+                    WHERE source_name = ? AND disabled = TRUE
+                        AND updated_at <= ?
+                        AND last_error = ?
+                    RETURNING source_name
+                    """,
+                    [now, source_name, cutoff, row[0]],
+                ).fetchone()
+                return claimed is not None
+        except Exception as exc:
+            raise StorageError("Failed to claim crawl health retry") from exc
+
+    def finish_retry(self, source_name: str) -> None:
+        """Re-enable after a claimed probe yields valid nonempty content.
+
+        Historical success/failure counts and last_error are retained. Since
+        the failure budget is already exhausted, the next failure disables the
+        source again immediately; successful fetches do not disable it again.
+        """
+        self.flush()
+        try:
+            with self._write_lock:
+                self.conn.execute(
+                    "UPDATE crawl_health SET disabled = FALSE WHERE source_name = ?",
+                    [source_name],
+                )
+        except Exception as exc:
+            raise StorageError("Failed to finish crawl health retry") from exc
+
+    def postpone_retry(self, source_name: str, retry_at: datetime) -> None:
+        """Honor a probe's Retry-After conservatively, plus the next cooldown."""
+        if retry_at.tzinfo is None:
+            raise ValueError("retry_at must be timezone-aware")
+        self.flush()
+        retry_at = retry_at.astimezone(timezone.utc).replace(tzinfo=None)
+        try:
+            with self._write_lock:
+                self.conn.execute(
+                    """
+                    UPDATE crawl_health SET updated_at = GREATEST(updated_at, ?)
+                    WHERE source_name = ? AND disabled = TRUE
+                    """,
+                    [retry_at, source_name],
+                )
+        except Exception as exc:
+            raise StorageError("Failed to postpone crawl health retry") from exc

@@ -471,6 +471,8 @@ def test_backfill_duckdb_ontology_serializes_datetime_payload_field(
     db_path = tmp_path / "papers.duckdb"
     published = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
     with duckdb.connect(str(db_path)) as conn:
+        # This fixture asserts a UTC wall-clock TIMESTAMP, regardless of host TZ.
+        conn.execute("SET TimeZone = 'UTC'")
         conn.execute(
             "CREATE TABLE articles ("
             " link VARCHAR PRIMARY KEY,"
