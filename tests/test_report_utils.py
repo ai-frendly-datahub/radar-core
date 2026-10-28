@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -266,6 +266,8 @@ def test_generate_report(tmp_path, monkeypatch) -> None:
     assert summary_payload["source_count"] == 2
     assert summary_payload["matched_count"] == 2
     assert summary_payload["sources"] == {"IGN": 1, "GameSpot": 1}
+    assert "run" not in summary_payload
+    assert "sources_window" not in summary_payload
     assert summary_payload["top_entities"] == [
         {"name": "Nintendo", "count": 2},
         {"name": "Xbox", "count": 1},
@@ -1076,6 +1078,306 @@ def test_report_environment_tojson_uses_json_default(tmp_path) -> None:
 
     untouched = Environment()
     assert "default" not in untouched.policies["json.dumps_kwargs"]
+
+
+_LEGACY_SUMMARY_KEYS = [
+    "date",
+    "category",
+    "article_count",
+    "source_count",
+    "matched_count",
+    "top_entities",
+    "sources",
+    "generated_at",
+]
+
+
+def test_generate_summary_json_without_run_collection_is_unchanged(
+    tmp_path, patch_datetime
+) -> None:
+    """Omitting run_collection, or passing None, keeps the previous JSON."""
+    articles = [
+        {"source": "YTN", "matched_entities": ["Nintendo"]},
+        {"source": "MBC", "matched_entities": []},
+    ]
+    stats = {
+        "article_count": 2,
+        "source_count": 2,
+        "matched_count": 1,
+        "window_days": 7,
+    }
+
+    omitted = generate_summary_json(
+        category_name="game",
+        articles=articles,
+        stats=stats,
+        output_dir=tmp_path / "omitted",
+    )
+    explicit_none = generate_summary_json(
+        category_name="game",
+        articles=articles,
+        stats=stats,
+        output_dir=tmp_path / "explicit",
+        ontology_metadata=None,
+        run_collection=None,
+    )
+
+    assert omitted.read_text(encoding="utf-8") == explicit_none.read_text(encoding="utf-8")
+    payload = json.loads(omitted.read_text(encoding="utf-8"))
+    assert list(payload) == _LEGACY_SUMMARY_KEYS
+    assert payload["sources"] == {"YTN": 1, "MBC": 1}
+    assert payload["article_count"] == 2
+    assert "window_days" not in payload
+    assert "run" not in payload
+    assert "sources_window" not in payload
+
+
+def test_generate_summary_json_run_keeps_seven_day_counts(tmp_path) -> None:
+    """A failed fetch must not be hidden by articles already stored in the 7-day window.
+
+    GovRadar's 서울시 지원사업 stayed at 1 after SSL failures, and BlogRadar's
+    r/golang stayed at 37 after a Reddit 429. Those window totals remain.
+    ``run`` records that this execution stored nothing for either source.
+    """
+    articles = [{"source": "서울시 지원사업"}] + [{"source": "r/golang"} for _ in range(37)]
+    secret = "supersecretvalue"
+    run_collection = {
+        "collected_total": 2,
+        "collected_counts": {
+            "서울시 지원사업": 0,
+            "r/golang": 0,
+            "다른 소스": 2,
+        },
+        "failed_sources": [
+            {
+                "source": "서울시 지원사업",
+                "errors": [
+                    (
+                        "SSLError: [SSL: UNEXPECTED_EOF_WHILE_READING] "
+                        f"Authorization: Bearer {secret}"
+                    )
+                ],
+            },
+            {
+                "source": "r/golang",
+                "errors": ["HTTP 429 Too Many Requests"],
+            },
+        ],
+        "last_success_at": {
+            "서울시 지원사업": datetime(2026, 10, 22, 9, 15, 8),
+            "r/golang": "2026-10-26T01:00:00+09:00",
+            "다른 소스": None,
+        },
+        "api_key": secret,
+    }
+
+    result_path = generate_summary_json(
+        category_name="mixed",
+        articles=articles,
+        stats={"window_days": 7},
+        output_dir=tmp_path,
+        run_collection=run_collection,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    stored = result_path.read_text(encoding="utf-8")
+
+    assert payload["sources"] == {"서울시 지원사업": 1, "r/golang": 37}
+    assert payload["article_count"] == 38
+    assert payload["sources_window"] == {
+        "days": 7,
+        "scope": "rolling_window_cumulative",
+        "counts_field": "sources",
+        "description": (
+            "sources, article_count, source_count, matched_count는 "
+            "최근 7일 누적 기사 수입니다. "
+            "이번 실행의 소스별 수집 건수는 run.collected_counts입니다."
+        ),
+    }
+    assert payload["run"] == {
+        "collected_total": 2,
+        "collected_counts": {
+            "서울시 지원사업": 0,
+            "r/golang": 0,
+            "다른 소스": 2,
+        },
+        "failed_sources": [
+            {
+                "source": "서울시 지원사업",
+                "errors": [
+                    "SSLError: [SSL: UNEXPECTED_EOF_WHILE_READING] Authorization=[redacted]"
+                ],
+            },
+            {"source": "r/golang", "errors": ["HTTP 429 Too Many Requests"]},
+        ],
+        "last_success_at": {
+            "서울시 지원사업": "2026-10-22T09:15:08+00:00",
+            "r/golang": "2026-10-25T16:00:00+00:00",
+            "다른 소스": None,
+        },
+    }
+    assert secret not in stored
+    assert "api_key" not in payload["run"]
+    assert "Bearer" not in stored
+
+
+def test_generate_summary_json_run_redacts_headers_and_caps_length(tmp_path) -> None:
+    secret = "supersecretvalue"
+    cookie = "zzzzzzzz"
+    long_tail = "F" * 400
+    run_collection = {
+        "collected_counts": {"feed": 0},
+        "errors": [
+            "feed: request failed: https://user:s3cret@example.com/path"
+            f"?serviceKey={secret}&x=1 "
+            f"Authorization: Bearer tok.en Cookie: sessionid={cookie}; theme=dark "
+            + ("E" * 100)
+            + " "
+            + long_tail
+        ],
+    }
+
+    result_path = generate_summary_json(
+        category_name="feed",
+        articles=[{"source": "feed"}],
+        stats={"window_days": 14},
+        output_dir=tmp_path,
+        run_collection=run_collection,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    stored = result_path.read_text(encoding="utf-8")
+    error = payload["run"]["failed_sources"][0]["errors"][0]
+
+    assert payload["sources"] == {"feed": 1}
+    assert payload["sources_window"]["days"] == 14
+    assert "14일 누적" in payload["sources_window"]["description"]
+    assert payload["run"]["collected_counts"] == {"feed": 0}
+    assert payload["run"]["collected_total"] == 0
+    assert payload["run"]["failed_sources"][0]["source"] == "feed"
+    assert len(error) <= 240
+    assert error.endswith("...")
+    assert "s3cret" not in stored
+    assert secret not in stored
+    assert "tok.en" not in stored
+    assert cookie not in stored
+    assert "serviceKey=[redacted]" in error
+    assert "Authorization=[redacted]" in error
+    assert "Cookie=[redacted]" in error
+    assert "https://user:[redacted]@example.com/path" in error
+
+
+def test_generate_summary_json_run_zero_fills_failed_sources(tmp_path) -> None:
+    run_collection = {
+        "collected_counts": {"YTN": True, "MBC": 2, "KBS": -3},
+        "failed_sources": [
+            {"source": "누락된 소스", "error": "timeout"},
+            {"source": "MBC", "errors": []},
+        ],
+        "last_success_at": {"빈 시각": "not-a-timestamp"},
+    }
+
+    result_path = generate_summary_json(
+        category_name="news",
+        articles=[],
+        stats={},
+        output_dir=tmp_path,
+        run_collection=run_collection,
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["sources"] == {}
+    assert payload["run"]["collected_counts"] == {
+        "MBC": 2,
+        "KBS": 0,
+        "누락된 소스": 0,
+    }
+    assert payload["run"]["collected_total"] == 2
+    assert payload["run"]["failed_sources"] == [
+        {"source": "누락된 소스", "errors": ["timeout"]},
+        {"source": "MBC", "errors": []},
+    ]
+    assert payload["run"]["last_success_at"] == {"빈 시각": None}
+    assert payload["sources_window"]["days"] == 7
+
+
+def test_generate_summary_json_run_collection_does_not_mutate_input(tmp_path) -> None:
+    run_collection = {
+        "collected_total": 0,
+        "collected_counts": {"r/golang": 0},
+        "failed_sources": [
+            {
+                "source": "r/golang",
+                "errors": ["HTTP 429 Authorization: Bearer supersecretvalue"],
+            }
+        ],
+        "last_success_at": {
+            "r/golang": datetime(2026, 10, 22, 18, 15, 8, tzinfo=timezone(timedelta(hours=9))),
+        },
+    }
+    snapshot = json.loads(json.dumps(run_collection, default=str))
+
+    result_path = generate_summary_json(
+        category_name="blog",
+        articles=[{"source": "r/golang"}] * 37,
+        stats={"window_days": 7, "article_count": 37},
+        output_dir=tmp_path,
+        run_collection=run_collection,
+    )
+
+    assert json.loads(json.dumps(run_collection, default=str)) == snapshot
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["sources"] == {"r/golang": 37}
+    assert payload["article_count"] == 37
+    assert payload["run"]["collected_counts"] == {"r/golang": 0}
+    assert "supersecretvalue" not in result_path.read_text(encoding="utf-8")
+    assert payload["run"]["last_success_at"]["r/golang"] == "2026-10-22T09:15:08+00:00"
+
+
+def test_generate_summary_json_rejects_non_mapping_run_collection(tmp_path) -> None:
+    output_dir = tmp_path / "summaries"
+    with pytest.raises(TypeError, match="run_collection"):
+        generate_summary_json(
+            category_name="game",
+            articles=[],
+            stats={},
+            output_dir=output_dir,
+            run_collection=["not-a-mapping"],  # type: ignore[arg-type]
+        )
+    assert not output_dir.exists()
+
+
+def test_generate_report_forwards_run_collection(
+    tmp_path,
+    sample_category,
+    sample_articles,
+    sample_stats,
+    patch_datetime,
+) -> None:
+    output_path = tmp_path / "reports" / "game_report.html"
+    generate_report(
+        category=sample_category,
+        articles=sample_articles,
+        output_path=output_path,
+        stats=sample_stats,
+        run_collection={
+            "collected_total": len(sample_articles),
+            "collected_counts": {"IGN": len(sample_articles) - 1, "GameSpot": 0},
+            "errors": ["GameSpot: HTTP 429 Too Many Requests"],
+            "last_success_at": {"GameSpot": None, "IGN": "2026-10-27T00:00:00Z"},
+        },
+    )
+
+    summary_path = tmp_path / "reports" / "game_20240315_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["sources"] == {"IGN": 1, "GameSpot": 1}
+    assert payload["sources_window"]["days"] == 7
+    assert "7일 누적" in payload["sources_window"]["description"]
+    assert payload["run"]["collected_total"] == len(sample_articles)
+    assert payload["run"]["collected_counts"] == {"IGN": 1, "GameSpot": 0}
+    assert payload["run"]["failed_sources"] == [
+        {"source": "GameSpot", "errors": ["HTTP 429 Too Many Requests"]}
+    ]
+    assert payload["run"]["last_success_at"]["IGN"] == "2026-10-27T00:00:00+00:00"
+    assert payload["run"]["last_success_at"]["GameSpot"] is None
+    assert "Zelda Launch" in output_path.read_text(encoding="utf-8")
 
 
 def test_json_safe_normalizes_nested_datetimes_without_mutating_input() -> None:
