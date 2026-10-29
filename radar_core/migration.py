@@ -25,14 +25,12 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
 
 
 def _ensure_migrations_table(conn: duckdb.DuckDBPyConnection) -> None:
-    _ = conn.execute(
-        """
+    _ = conn.execute("""
         CREATE TABLE IF NOT EXISTS _migrations (
             version TEXT PRIMARY KEY,
             applied_at TIMESTAMP NOT NULL
         )
-        """
-    )
+        """)
 
 
 def _applied_versions(conn: duckdb.DuckDBPyConnection) -> set[str]:
@@ -65,8 +63,7 @@ def _migration_v001_lineage_columns(conn: duckdb.DuckDBPyConnection) -> None:
 
 
 def _migration_v002_crawl_health(conn: duckdb.DuckDBPyConnection) -> None:
-    _ = conn.execute(
-        """
+    _ = conn.execute("""
         CREATE TABLE IF NOT EXISTS crawl_health (
             source_name TEXT PRIMARY KEY,
             success_count INTEGER DEFAULT 0,
@@ -77,8 +74,7 @@ def _migration_v002_crawl_health(conn: duckdb.DuckDBPyConnection) -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
 
 def _migration_v003_article_ontology(conn: duckdb.DuckDBPyConnection) -> None:
@@ -92,6 +88,20 @@ def _migration_v003_article_ontology(conn: duckdb.DuckDBPyConnection) -> None:
     columns = {str(row[1]) for row in table_info_rows}
     if "ontology_json" not in columns:
         _ = conn.execute("ALTER TABLE articles ADD COLUMN ontology_json TEXT")
+
+
+def _migration_v005_published_raw(conn: duckdb.DuckDBPyConnection) -> None:
+    """Keep the original published string next to the UTC instant."""
+    if not _table_exists(conn, "articles"):
+        return
+
+    table_info_rows = cast(
+        list[tuple[object, ...]],
+        conn.execute("PRAGMA table_info('articles')").fetchall(),
+    )
+    columns = {str(row[1]) for row in table_info_rows}
+    if "published_raw" not in columns:
+        _ = conn.execute("ALTER TABLE articles ADD COLUMN published_raw TEXT")
 
 
 def _migration_v004_cluster_id(conn: duckdb.DuckDBPyConnection) -> None:
@@ -115,6 +125,7 @@ _MIGRATIONS: tuple[tuple[str, MigrationFn], ...] = (
     ("v002_crawl_health", _migration_v002_crawl_health),
     ("v003_article_ontology", _migration_v003_article_ontology),
     ("v004_cluster_id", _migration_v004_cluster_id),
+    ("v005_published_raw", _migration_v005_published_raw),
 )
 
 
@@ -130,6 +141,7 @@ def _repair_schema(conn: duckdb.DuckDBPyConnection) -> None:
     _migration_v001_lineage_columns(conn)
     _migration_v003_article_ontology(conn)
     _migration_v004_cluster_id(conn)
+    _migration_v005_published_raw(conn)
 
 
 def migrate(conn: duckdb.DuckDBPyConnection) -> list[str]:

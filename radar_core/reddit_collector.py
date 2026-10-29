@@ -32,9 +32,9 @@ from __future__ import annotations
 import html
 import random
 import re
-import time
 import threading
-from datetime import UTC, datetime
+import time
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -43,6 +43,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .crawl_health import CrawlHealthStore
+from .dates import parse_unix_timestamp
 from .exceptions import NetworkError, ParseError, SourceError
 from .models import Article, Source
 
@@ -182,14 +183,9 @@ def _build_reddit_json_url(base_url: str, sort: str = "new", limit: int = 25) ->
     return f"{json_url}?{urlencode(params)}"
 
 
-def _parse_reddit_timestamp(timestamp: float | int | None) -> datetime | None:
-    """Parse Reddit Unix timestamp to datetime."""
-    if timestamp is None:
-        return None
-    try:
-        return datetime.fromtimestamp(float(timestamp), tz=UTC)
-    except (ValueError, TypeError, OSError):
-        return None
+def _parse_reddit_timestamp(timestamp: float | None) -> datetime | None:
+    """Parse Reddit ``created_utc`` (UTC epoch seconds) to an aware datetime."""
+    return parse_unix_timestamp(timestamp)
 
 
 def _extract_reddit_text(data: dict[str, Any]) -> str:

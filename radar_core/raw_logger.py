@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .dates import daily_partition_date, to_utc_iso
 from .jsonutil import json_dumps
 from .models import Article
 
@@ -21,7 +22,8 @@ class RawLogger:
         run_id: str | None = None,
     ) -> Path:
         now = datetime.now(UTC)
-        date_dir = self.raw_dir / now.date().isoformat()
+        # Daily directory is the KST calendar date of this collection, not UTC.
+        date_dir = self.raw_dir / daily_partition_date(now).isoformat()
         safe_source_name = source_name.replace("/", "_").replace("\\", "_")
 
         if run_id is not None:
@@ -51,13 +53,14 @@ class RawLogger:
                     "title": article.title,
                     "link": article.link,
                     "summary": article.summary,
-                    "published": article.published.isoformat()
-                    if article.published
-                    else None,
+                    "published": (
+                        to_utc_iso(article.published) if article.published else None
+                    ),
+                    "published_raw": article.published_raw,
                     "source": article.source,
                     "category": article.category,
                     "matched_entities": article.matched_entities,
-                    "logged_at": now.isoformat(),
+                    "logged_at": to_utc_iso(now),
                 }
                 if article.ontology:
                     record["ontology"] = article.ontology

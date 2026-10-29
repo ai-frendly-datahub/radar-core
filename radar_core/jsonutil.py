@@ -7,6 +7,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from .dates import to_utc_iso
+
 
 def json_default(value: object) -> Any:
     """Return a JSON-encodable stand-in for values ``json.dumps`` rejects.
@@ -16,7 +18,7 @@ def json_default(value: object) -> Any:
     become lists, sorted when the items can be ordered together.
     """
     if isinstance(value, datetime):
-        return value.isoformat()
+        return to_utc_iso(value)
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, Decimal):

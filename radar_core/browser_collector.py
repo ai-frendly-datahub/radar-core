@@ -14,6 +14,7 @@ from pybreaker import CircuitBreakerError
 
 from .adaptive_throttle import AdaptiveThrottler
 from .crawl_health import CrawlHealthStore
+from .dates import parse_html_published, resolve_default_timezone
 from .exceptions import ParseError, SourceError
 from .models import Article, Source
 from .resilience import get_circuit_breaker_manager
@@ -82,10 +83,9 @@ class BrowserCollector:
                     for source in sources:
                         source_name = _source_string(source, "name", "unknown")
                         config = _source_config(source)
-                        if (
-                            not _source_bool(config, "bypass_crawl_health")
-                            and self._health_store.is_disabled(source_name)
-                        ):
+                        if not _source_bool(
+                            config, "bypass_crawl_health"
+                        ) and self._health_store.is_disabled(source_name):
                             errors.append(
                                 f"{source_name}: Source disabled (crawl health threshold reached)"
                             )
@@ -154,11 +154,22 @@ class BrowserCollector:
             raise SourceError(source_name, f"Unsupported source type '{source_type}'")
 
         config = _source_config(source)
+        default_timezone = resolve_default_timezone(
+            source_url=source_url,
+            default_timezone=_source_string(source, "default_timezone", ""),
+            config=config,
+        )
         timeout_ms = _source_int(config, "timeout", self._default_timeout)
-        navigation_retries = _source_positive_int(config, "navigation_retries", 1, max_value=5)
-        navigation_retry_delay_ms = _source_int(config, "navigation_retry_delay_ms", 1_000)
+        navigation_retries = _source_positive_int(
+            config, "navigation_retries", 1, max_value=5
+        )
+        navigation_retry_delay_ms = _source_int(
+            config, "navigation_retry_delay_ms", 1_000
+        )
         wait_for_selector = _source_optional_string(config, "wait_for")
-        fallback_wait_for_selector = _source_optional_string(config, "fallback_wait_for")
+        fallback_wait_for_selector = _source_optional_string(
+            config, "fallback_wait_for"
+        )
         content_selector = _source_optional_string(config, "content_selector")
         title_selector = _source_optional_string(config, "title_selector")
         link_selector = _source_optional_string(config, "link_selector")
@@ -202,18 +213,23 @@ class BrowserCollector:
                 link_selector=link_selector,
                 config=config,
                 timeout_ms=timeout_ms,
+                default_timezone=default_timezone,
             )
             if items:
                 return items
 
+            published, published_raw = _published_from_html(
+                page_html, default_timezone=default_timezone
+            )
             return [
                 Article(
                     title=title,
                     link=source_url,
                     summary=summary,
-                    published=datetime.now(UTC),
+                    published=published,
                     source=source_name,
                     category=category,
+                    published_raw=published_raw,
                 )
             ]
         except SourceError:
@@ -474,6 +490,7 @@ def _extract_articles_from_links(
     link_selector: str | None,
     config: Mapping[str, Any],
     timeout_ms: int | None = None,
+    default_timezone: str = "UTC",
 ) -> list[Article]:
     if not link_selector:
         return []
@@ -497,7 +514,9 @@ def _extract_articles_from_links(
 
     fetch_detail = _source_bool(config, "fetch_detail")
     detail_limit = _source_positive_int(config, "detail_limit", 5, max_value=30)
-    detail_timeout_ms = _source_int(config, "detail_timeout", min(timeout_ms or 8_000, 8_000))
+    detail_timeout_ms = _source_int(
+        config, "detail_timeout", min(timeout_ms or 8_000, 8_000)
+    )
 
     items: list[Article] = []
     for entry in links[:30]:
@@ -529,6 +548,7 @@ def _extract_articles_from_links(
                 article=article,
                 timeout_ms=detail_timeout_ms,
                 config=config,
+                default_timezone=default_timezone,
             )
 
         items.append(article)
@@ -553,6 +573,7 @@ def _enrich_article_from_detail(
     article: Article,
     timeout_ms: int,
     config: Mapping[str, Any],
+    default_timezone: str = "UTC",
 ) -> Article:
     context = getattr(extraction_page, "context", None)
     if context is None:
@@ -568,8 +589,12 @@ def _enrich_article_from_detail(
             page,
             article.link,
             timeout_ms=timeout_ms,
-            retries=_source_positive_int(config, "detail_navigation_retries", 1, max_value=3),
-            retry_delay_ms=_source_int(config, "detail_navigation_retry_delay_ms", 1_000),
+            retries=_source_positive_int(
+                config, "detail_navigation_retries", 1, max_value=3
+            ),
+            retry_delay_ms=_source_int(
+                config, "detail_navigation_retry_delay_ms", 1_000
+            ),
         )
         detail_wait_for = _source_optional_string(config, "detail_wait_for")
         if detail_wait_for:
@@ -586,24 +611,44 @@ def _enrich_article_from_detail(
             extracted_title = _extract_title(page, detail_title_selector)
             if extracted_title != "(no title)":
                 title = extracted_title
+        page_html = _safe_page_content(page)
         summary = _extract_summary(
             page,
             _source_optional_string(config, "detail_content_selector"),
-            _safe_page_content(page),
+            page_html,
             _detect_page_encoding(page),
         )
+        published, published_raw = _published_from_html(
+            page_html, default_timezone=default_timezone
+        )
+        if published_raw is None:
+            published = article.published
+            published_raw = article.published_raw
         return Article(
             title=title,
             link=article.link,
             summary=summary or article.summary,
-            published=article.published,
+            published=published,
             source=article.source,
             category=article.category,
+            published_raw=published_raw,
+            matched_entities=article.matched_entities,
+            collected_at=article.collected_at,
+            ontology=article.ontology,
         )
     except Exception:
         return article
     finally:
         page.close()
+
+
+def _published_from_html(
+    page_html: str, *, default_timezone: str
+) -> tuple[datetime, str | None]:
+    parsed, raw = parse_html_published(page_html, default_timezone=default_timezone)
+    if parsed is None:
+        return datetime.now(UTC), None
+    return parsed, raw
 
 
 def _resolve_article_link(

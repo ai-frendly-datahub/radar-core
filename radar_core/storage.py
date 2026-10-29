@@ -14,12 +14,34 @@ from .migration import migrate
 from .models import Article
 
 
-def _utc_naive(dt: datetime | None) -> datetime | None:
+def _as_utc_naive(dt: datetime | None) -> datetime | None:
+    """UTC wall time for DuckDB TIMESTAMP columns.
+
+    Those columns cannot store an offset. Naive inputs are already UTC wall
+    time (they are not the process-local zone). Aware inputs are converted
+    to UTC and then stripped. JSON and ``published_raw`` keep the offset and
+    the original text. ``to_utc_iso`` is the on-disk text form.
+    """
     if dt is None:
         return None
-    if dt.tzinfo:
-        return dt.astimezone(UTC).replace(tzinfo=None)
-    return dt
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
+
+
+def _as_utc_aware(dt: datetime | None) -> datetime | None:
+    """Reattach UTC to a TIMESTAMP read back from DuckDB."""
+    if dt is None:
+        return None
+    if not isinstance(dt, datetime):
+        return None
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+# Kept so older call sites and external monkeypatches still find the writer.
+_utc_naive = _as_utc_naive
 
 
 class RadarStorage:
@@ -84,8 +106,7 @@ class RadarStorage:
         self.close()
 
     def _ensure_tables(self) -> None:
-        _ = self.conn.execute(
-            """
+        _ = self.conn.execute("""
             CREATE SEQUENCE IF NOT EXISTS articles_id_seq START 1;
             CREATE TABLE IF NOT EXISTS articles (
                 id BIGINT PRIMARY KEY DEFAULT nextval('articles_id_seq'),
@@ -96,6 +117,7 @@ class RadarStorage:
                 summary TEXT,
                 published TIMESTAMP,
                 collected_at TIMESTAMP NOT NULL,
+                published_raw TEXT,
                 entities_json TEXT,
                 ontology_json TEXT,
                 run_id TEXT,
@@ -103,8 +125,7 @@ class RadarStorage:
                 fetch_status TEXT,
                 fetched_at TIMESTAMP
             );
-            """
-        )
+            """)
         _ = self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_articles_category_time ON articles (category, published, collected_at);"
         )
@@ -130,7 +151,7 @@ class RadarStorage:
                 violations=ontology_violations,
             )
 
-        now = _utc_naive(datetime.now(UTC))
+        now = _as_utc_naive(datetime.now(UTC))
         fetched_at = now if (run_id or collector_version or fetch_status) else None
         from .url_utils import canonical_url
 
@@ -147,8 +168,9 @@ class RadarStorage:
                     article.title,
                     link,
                     article.summary,
-                    _utc_naive(article.published),
+                    _as_utc_naive(article.published),
                     now,
+                    article.published_raw,
                     json_dumps(article.matched_entities),
                     json_dumps(article.ontology),
                     run_id,
@@ -173,6 +195,7 @@ class RadarStorage:
                     summary,
                     published,
                     collected_at,
+                    published_raw,
                     entities_json,
                     ontology_json,
                     run_id,
@@ -180,12 +203,13 @@ class RadarStorage:
                     fetch_status,
                     fetched_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(link) DO UPDATE SET
                     title = EXCLUDED.title,
                     summary = EXCLUDED.summary,
                     published = EXCLUDED.published,
                     collected_at = EXCLUDED.collected_at,
+                    published_raw = COALESCE(EXCLUDED.published_raw, articles.published_raw),
                     entities_json = EXCLUDED.entities_json,
                     ontology_json = EXCLUDED.ontology_json,
                     run_id = EXCLUDED.run_id,
@@ -206,10 +230,11 @@ class RadarStorage:
     def recent_articles(
         self, category: str, *, days: int = 7, limit: int = 200
     ) -> list[Article]:
-        since = _utc_naive(datetime.now(UTC) - timedelta(days=days))
+        since = _as_utc_naive(datetime.now(UTC) - timedelta(days=days))
         cur = self.conn.execute(
             """
-            SELECT category, source, title, link, summary, published, collected_at, entities_json, ontology_json
+            SELECT category, source, title, link, summary, published, collected_at,
+                   entities_json, ontology_json, published_raw
             FROM articles
             WHERE category = ? AND COALESCE(published, collected_at) >= ?
             ORDER BY COALESCE(published, collected_at) DESC
@@ -229,6 +254,7 @@ class RadarStorage:
                     datetime | None,
                     str | None,
                     str | None,
+                    str | None,
                 ]
             ],
             cur.fetchall(),
@@ -246,9 +272,10 @@ class RadarStorage:
                 collected_at,
                 raw_entities,
                 raw_ontology,
+                published_raw,
             ) = row
-            published_at = published if isinstance(published, datetime) else None
-            collected = collected_at if isinstance(collected_at, datetime) else None
+            published_at = _as_utc_aware(published)
+            collected = _as_utc_aware(collected_at)
 
             entities = _parse_entities_json(raw_entities)
             ontology = _parse_ontology_json(raw_ontology)
@@ -264,6 +291,7 @@ class RadarStorage:
                     matched_entities=entities,
                     collected_at=collected,
                     ontology=ontology,
+                    published_raw=str(published_raw) if published_raw else None,
                 )
             )
         return results
@@ -289,7 +317,7 @@ class RadarStorage:
 
         from .dedup import cluster_titles, normalize_title
 
-        since = _utc_naive(datetime.now(UTC) - timedelta(days=days))
+        since = _as_utc_naive(datetime.now(UTC) - timedelta(days=days))
         params: list[object] = [since]
         sql = (
             "SELECT link, title FROM articles "
@@ -343,7 +371,7 @@ class RadarStorage:
         return len(updates)
 
     def delete_older_than(self, days: int) -> int:
-        cutoff = _utc_naive(datetime.now(UTC) - timedelta(days=days))
+        cutoff = _as_utc_naive(datetime.now(UTC) - timedelta(days=days))
         count_row = self.conn.execute(
             "SELECT COUNT(*) FROM articles WHERE COALESCE(published, collected_at) < ?",
             [cutoff],

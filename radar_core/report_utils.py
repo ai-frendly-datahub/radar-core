@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
+from radar_core.dates import daily_partition_date, to_utc_iso
 from radar_core.jsonutil import json_default, json_dumps
 from radar_core.models import Article, CategoryConfig
 
@@ -97,12 +98,12 @@ def generate_report(
                 "source": article.source,
                 "summary": article.summary,
                 "published_at": (
-                    published_at.isoformat()
+                    to_utc_iso(published_at)
                     if isinstance(published_at, datetime)
                     else None
                 ),
                 "collected_at": (
-                    collected_at.isoformat()
+                    to_utc_iso(collected_at)
                     if isinstance(collected_at, datetime)
                     else None
                 ),
@@ -140,7 +141,8 @@ def generate_report(
                     entity_counts[entity_name] += 1
 
     now = datetime.now(timezone.utc)
-    date_stamp = now.strftime("%Y%m%d")
+    # Report filename date is the KST daily partition, not the UTC date.
+    date_stamp = daily_partition_date(now).strftime("%Y%m%d")
 
     dated_name = f"{category.category_name}_{date_stamp}.html"
     dated_path = output_path.parent / dated_name
@@ -207,7 +209,9 @@ def _normalize_plugin_charts(plugin_charts: object) -> list[dict[str, Any]]:
         return []
     if isinstance(plugin_charts, dict):
         return [
-            value for value in plugin_charts.values() if isinstance(value, dict) and value
+            value
+            for value in plugin_charts.values()
+            if isinstance(value, dict) and value
         ]
     if isinstance(plugin_charts, list):
         return [value for value in plugin_charts if isinstance(value, dict) and value]
@@ -241,7 +245,8 @@ def _normalize_extra_sections(extra_sections: object) -> list[dict[str, Any]]:
                 "panel_title": str(raw_section.get("panel_title") or title).strip()
                 or title,
                 "subtitle": str(raw_section.get("subtitle") or "").strip(),
-                "nav_label": str(raw_section.get("nav_label") or title).strip() or title,
+                "nav_label": str(raw_section.get("nav_label") or title).strip()
+                or title,
                 "aria_label": str(raw_section.get("aria_label") or title).strip()
                 or title,
                 "badges": badges,
@@ -455,11 +460,12 @@ def generate_summary_json(
                 else:
                     entity_counts[entity_name] += 1
 
-    now = datetime.now(timezone.utc).astimezone()
-    date_stamp = now.strftime("%Y%m%d")
+    now = datetime.now(timezone.utc)
+    partition = daily_partition_date(now)
+    date_stamp = partition.strftime("%Y%m%d")
 
     summary = {
-        "date": now.date().isoformat(),
+        "date": partition.isoformat(),
         "category": category_name,
         "article_count": int(stats.get("article_count", len(articles))),
         "source_count": int(
@@ -471,7 +477,7 @@ def generate_summary_json(
             for name, count in entity_counts.most_common(20)
         ],
         "sources": dict(rolling_window_source_counts),
-        "generated_at": now.isoformat(),
+        "generated_at": to_utc_iso(now),
     }
     # Opt-in preservation of per-article `event_model_payload` for ontology-aware
     # downstream consumers (e.g. dashboard event-model panel). Callers that do not
@@ -701,7 +707,9 @@ def _normalize_timestamp(value: object) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        stamped = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        stamped = (
+            value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        )
         return stamped.astimezone(timezone.utc).isoformat()
     if isinstance(value, date):
         return value.isoformat()
@@ -753,7 +761,7 @@ def _normalize_summary_metadata_value(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, datetime):
-        return value.isoformat()
+        return to_utc_iso(value)
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)

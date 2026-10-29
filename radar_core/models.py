@@ -27,6 +27,8 @@ class Source:
         info_purpose: 정보 목적 태그 목록
         notes: 관리자 메모
         config: 수집기별 추가 설정
+        default_timezone: 타임존이 없는 날짜 문자열의 IANA 타임존.
+            비어 있으면 ``.kr`` 호스트는 Asia/Seoul, 그 외는 UTC.
     """
 
     name: str
@@ -45,6 +47,7 @@ class Source:
     info_purpose: list[str] = field(default_factory=list)
     notes: str = ""
     config: dict[str, Any] = field(default_factory=dict)
+    default_timezone: str = ""
 
 
 @dataclass
@@ -79,6 +82,7 @@ class Article:
     matched_entities: dict[str, list[str]] = field(default_factory=dict)
     collected_at: datetime | None = None
     ontology: dict[str, Any] = field(default_factory=dict)
+    published_raw: str | None = None
 
 
 @dataclass
@@ -103,7 +107,9 @@ class ReportSettings:
     """리포트 생성 설정."""
 
     daily_max_items: int = 50
-    sections: list[str] = field(default_factory=lambda: ["top_issues", "trending", "new_sources"])
+    sections: list[str] = field(
+        default_factory=lambda: ["top_issues", "trending", "new_sources"]
+    )
 
 
 @dataclass

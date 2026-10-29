@@ -6,8 +6,7 @@ import threading
 import time
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import UTC, datetime
-from email.utils import parsedate_to_datetime
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,6 +18,7 @@ from urllib3.util.retry import Retry
 
 from .adaptive_throttle import AdaptiveThrottler
 from .crawl_health import CrawlHealthStore
+from .dates import parse_feed_entry, resolve_default_timezone
 from .exceptions import NetworkError, ParseError, SourceError
 from .models import Article, Source
 from .resilience import get_circuit_breaker_manager
@@ -48,9 +48,9 @@ def _clear_collection_controls() -> None:
         _ACTIVE_HEALTH_STORE = None
 
 
-def _get_collection_controls() -> tuple[
-    AdaptiveThrottler | None, CrawlHealthStore | None
-]:
+def _get_collection_controls() -> (
+    tuple[AdaptiveThrottler | None, CrawlHealthStore | None]
+):
     with _COLLECTION_CONTROL_LOCK:
         return _ACTIVE_THROTTLER, _ACTIVE_HEALTH_STORE
 
@@ -262,7 +262,8 @@ def collect_sources(
     unsupported_sources = [
         source
         for source in enabled_sources
-        if source.type.lower() not in {"rss", "browser", "html", "javascript", "js", "web", "reddit"}
+        if source.type.lower()
+        not in {"rss", "browser", "html", "javascript", "js", "web", "reddit"}
     ]
     manager = get_circuit_breaker_manager()
     workers = _resolve_max_workers(max_workers)
@@ -283,9 +284,8 @@ def collect_sources(
     session = _create_session()
 
     def _collect_for_source(source: Source) -> tuple[list[Article], list[str]]:
-        if (
-            not _source_bool(source, "bypass_crawl_health")
-            and health_store.is_disabled(source.name)
+        if not _source_bool(source, "bypass_crawl_health") and health_store.is_disabled(
+            source.name
         ):
             return [], [
                 f"{source.name}: Source disabled (crawl health threshold reached)"
@@ -326,7 +326,8 @@ def collect_sources(
             if rss_sources:
                 with ThreadPoolExecutor(max_workers=workers) as executor:
                     future_map: list[Future[tuple[list[Article], list[str]]]] = [
-                        executor.submit(_collect_for_source, source) for source in rss_sources
+                        executor.submit(_collect_for_source, source)
+                        for source in rss_sources
                     ]
 
                     for future in future_map:
@@ -407,7 +408,7 @@ def _collect_single(
         items: list[Article] = []
 
         for entry in feed.entries[:limit]:
-            published = _extract_datetime(entry)
+            published, published_raw = _extract_published(entry, source)
             summary = _entry_text(entry, "summary") or _entry_text(entry, "description")
             if not summary:
                 content = entry.get("content", [])
@@ -433,6 +434,7 @@ def _collect_single(
                     published=published,
                     source=source.name,
                     category=category,
+                    published_raw=published_raw,
                 )
             )
 
@@ -441,26 +443,24 @@ def _collect_single(
         raise ParseError(f"Failed to parse feed from {source.name}: {exc}") from exc
 
 
-def _extract_datetime(entry: Mapping[str, Any]) -> datetime | None:
-    published_parsed = entry.get("published_parsed")
-    if isinstance(published_parsed, time.struct_time):
-        return datetime.fromtimestamp(time.mktime(published_parsed), tz=UTC)
+def _extract_datetime(
+    entry: Mapping[str, Any], source: Source | None = None
+) -> datetime | None:
+    """Backward-compatible wrapper. Prefer :func:`_extract_published` for the raw string."""
+    return _extract_published(entry, source)[0]
 
-    updated_parsed = entry.get("updated_parsed")
-    if isinstance(updated_parsed, time.struct_time):
-        return datetime.fromtimestamp(time.mktime(updated_parsed), tz=UTC)
 
-    for key in ("published", "updated", "date"):
-        raw = entry.get(key)
-        if raw:
-            try:
-                dt = parsedate_to_datetime(str(raw))
-                if dt and dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                return dt
-            except Exception:
-                continue
-    return None
+def _extract_published(
+    entry: Mapping[str, Any], source: Source | None = None
+) -> tuple[datetime | None, str | None]:
+    default_timezone = "UTC"
+    if source is not None:
+        default_timezone = resolve_default_timezone(
+            source_url=source.url,
+            default_timezone=source.default_timezone,
+            config=source.config,
+        )
+    return parse_feed_entry(entry, default_timezone=default_timezone)
 
 
 def _entry_text(entry: Mapping[str, Any], key: str) -> str:
