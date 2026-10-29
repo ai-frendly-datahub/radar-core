@@ -170,7 +170,7 @@ class RadarStorage:
                     article.summary,
                     _as_utc_naive(article.published),
                     now,
-                    article.published_raw,
+                    getattr(article, "published_raw", None),
                     json_dumps(article.matched_entities),
                     json_dumps(article.ontology),
                     run_id,

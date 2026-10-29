@@ -56,7 +56,7 @@ class RawLogger:
                     "published": (
                         to_utc_iso(article.published) if article.published else None
                     ),
-                    "published_raw": article.published_raw,
+                    "published_raw": getattr(article, "published_raw", None),
                     "source": article.source,
                     "category": article.category,
                     "matched_entities": article.matched_entities,
