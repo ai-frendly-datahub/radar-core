@@ -14,8 +14,7 @@ from radar_core.storage import RadarStorage
 def _create_legacy_articles_schema(db_path: Path) -> None:
     conn = duckdb.connect(str(db_path))
     try:
-        _ = conn.execute(
-            """
+        _ = conn.execute("""
             CREATE SEQUENCE IF NOT EXISTS articles_id_seq START 1;
             CREATE TABLE IF NOT EXISTS articles (
                 id BIGINT PRIMARY KEY DEFAULT nextval('articles_id_seq'),
@@ -28,8 +27,7 @@ def _create_legacy_articles_schema(db_path: Path) -> None:
                 collected_at TIMESTAMP NOT NULL,
                 entities_json TEXT
             );
-            """
-        )
+            """)
     finally:
         conn.close()
 
@@ -124,6 +122,7 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
         "v002_crawl_health",
         "v003_article_ontology",
         "v004_cluster_id",
+        "v005_published_raw",
     ]
     assert second_applied == []
 

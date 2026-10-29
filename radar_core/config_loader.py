@@ -244,6 +244,7 @@ def _parse_source(entry: dict[str, object]) -> Source:
         info_purpose=_string_list_value(resolved, "info_purpose"),
         notes=_string_value(resolved, "notes", ""),
         config=_dict_value(resolved, "config"),
+        default_timezone=_string_value(resolved, "default_timezone", ""),
     )
 
 

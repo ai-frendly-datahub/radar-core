@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from radar_core.dates import KST, daily_partition_date, parse_published
 
 _STOPWORDS = frozenset(
     {
@@ -68,19 +69,19 @@ _STOPWORDS = frozenset(
 
 
 def _extract_date(article: Any) -> datetime | None:
-    """Extract date from article object, trying common attribute names."""
+    """Extract an aware instant. The heatmap day is that instant's KST date."""
     for attr in ("collected_at", "published_at", "published", "date"):
         val = getattr(article, attr, None)
         if val is None:
             continue
-        if isinstance(val, datetime):
-            return val
-        if isinstance(val, str) and val:
-            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-                try:
-                    return datetime.strptime(val[:19], fmt).replace(tzinfo=UTC)
-                except (ValueError, IndexError):
-                    continue
+        parsed = val if isinstance(val, datetime) else None
+        if parsed is None and isinstance(val, str) and val:
+            parsed = parse_published(val, default_timezone="UTC")
+        if parsed is None:
+            continue
+        if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(KST)
     return None
 
 
@@ -167,7 +168,7 @@ def get_chart_config(store: Any = None, articles: Any = None) -> dict | None:
             return None
 
         # Build date range: last 14 days
-        today = datetime.now(tz=UTC).date()
+        today = daily_partition_date()
         date_range = [(today - timedelta(days=13 - i)).isoformat() for i in range(14)]
 
         # Build matrix: rows = entities, columns = dates

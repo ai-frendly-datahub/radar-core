@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
+from .dates import to_utc_iso
 from .jsonutil import json_dumps
 
 
@@ -119,12 +121,8 @@ def _default_published_at(article: object) -> str | None:
     value = getattr(article, "published", None)
     if value is None:
         return None
-    iso = getattr(value, "isoformat", None)
-    if callable(iso):
-        try:
-            return iso()
-        except (TypeError, ValueError):
-            return None
+    if isinstance(value, datetime):
+        return to_utc_iso(value)
     text = str(value).strip()
     return text or None
 
@@ -394,7 +392,9 @@ def build_article_ontology_metadata(
         "ontology_version": str(contract.get("ontology_version") or "").strip(),
         "source_role_id": source_role_mappings.get(source_name_normalized, "").strip(),
         "source_event_model": source_event_model_normalized,
-        "event_model_id": event_model_mappings.get(source_event_model_normalized, "").strip(),
+        "event_model_id": event_model_mappings.get(
+            source_event_model_normalized, ""
+        ).strip(),
         "evidence_policy_ids": evidence_policy_ids,
     }
     return {key: value for key, value in metadata.items() if _has_value(value)}
@@ -577,9 +577,19 @@ def backfill_duckdb_ontology(
                 and metadata.get("event_model_id")
             ):
                 article_proxy = _RowArticleProxy(
-                    title=row[column_index["title"]] if "title" in column_index else None,
-                    summary=row[column_index["summary"]] if "summary" in column_index else None,
-                    published=row[column_index["published"]] if "published" in column_index else None,
+                    title=(
+                        row[column_index["title"]] if "title" in column_index else None
+                    ),
+                    summary=(
+                        row[column_index["summary"]]
+                        if "summary" in column_index
+                        else None
+                    ),
+                    published=(
+                        row[column_index["published"]]
+                        if "published" in column_index
+                        else None
+                    ),
                     link=link,
                     source=normalized_source,
                     matched_entities=_decode_entities_json(

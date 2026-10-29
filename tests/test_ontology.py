@@ -514,8 +514,8 @@ def test_backfill_duckdb_ontology_serializes_datetime_payload_field(
     with duckdb.connect(str(db_path), read_only=True) as conn:
         row = conn.execute("SELECT ontology_json FROM articles").fetchone()
     metadata = json.loads(row[0])
-    # DuckDB TIMESTAMP drops tzinfo, so the stored instant is a naive ISO string.
-    assert metadata["event_model_payload"]["published"] == "2026-10-14T12:00:00"
+    # Stored TIMESTAMP is UTC wall time; serialization keeps the offset.
+    assert metadata["event_model_payload"]["published"] == "2026-10-14T12:00:00+00:00"
 
 
 def test_get_event_model_field_spec_reads_runtime_contract(tmp_path, monkeypatch) -> None:
