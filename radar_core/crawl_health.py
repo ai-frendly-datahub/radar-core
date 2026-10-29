@@ -7,12 +7,21 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import cast
+from typing import Iterable, cast
 
 import duckdb
 
 from .exceptions import StorageError
 from .migration import migrate
+
+
+# Transient HTTP failures that any caller may probe after the 24h minimum cooldown.
+TRANSIENT_RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+# Access-block statuses a caller must opt into explicitly. 403 can be a temporary
+# bot/IP block, but it can also be a policy decision, so it needs a long cooldown.
+OPT_IN_RETRY_STATUSES = frozenset({403})
+ACCESS_BLOCK_MIN_COOLDOWN_SECONDS = 7 * 86400
+_ERROR_STATUS = re.compile(r"^(\d{3}) (?:Client|Server) Error:")
 
 
 @dataclass
@@ -273,17 +282,37 @@ class CrawlHealthStore:
             return False
         return record.disabled
 
-    def claim_retry(self, source_name: str, cooldown_seconds: float = 86400) -> bool:
+    def claim_retry(
+        self,
+        source_name: str,
+        cooldown_seconds: float = 86400,
+        *,
+        retry_statuses: Iterable[int] | None = None,
+    ) -> bool:
         """Reserve one caller-managed probe for a disabled transient HTTP source.
 
         Opt-in only: ``is_disabled`` retains its existing meaning. The caller
         must limit transport retries and call ``finish_retry`` only after valid
         nonempty content. A claim stays disabled and advances ``updated_at``,
         so failures, empty results and crashed probes wait another cooldown.
-        Legacy 401/403, unknown errors and missing timestamps fail closed.
+        Unknown errors, 401, 404/410 and missing timestamps fail closed.
+
+        By default only ``TRANSIENT_RETRY_STATUSES`` are probed. A caller may
+        additionally pass ``retry_statuses=[403]`` for a source whose 403 is a
+        suspected temporary access block; that requires ``cooldown_seconds`` of
+        at least 7 days, so a still-blocked source costs one request per week.
+        Any other extra status raises ``ValueError``.
         """
         if not math.isfinite(cooldown_seconds) or cooldown_seconds < 86400:
             raise ValueError("crawl health cooldown must be at least 86400 seconds")
+        extra = frozenset(retry_statuses or ())
+        if not extra <= OPT_IN_RETRY_STATUSES:
+            raise ValueError("retry_statuses may only add " + ", ".join(
+                str(status) for status in sorted(OPT_IN_RETRY_STATUSES)
+            ))
+        if extra and cooldown_seconds < ACCESS_BLOCK_MIN_COOLDOWN_SECONDS:
+            raise ValueError("access-block retry needs a cooldown of at least 604800 seconds")
+        allowed = TRANSIENT_RETRY_STATUSES | extra
         self.flush()
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         cutoff = now - timedelta(seconds=cooldown_seconds)
@@ -293,10 +322,8 @@ class CrawlHealthStore:
                     "SELECT last_error FROM crawl_health WHERE source_name = ?",
                     [source_name],
                 ).fetchone()
-                if not row or not re.match(
-                    r"^(408|429|500|502|503|504) (?:Client|Server) Error:",
-                    str(row[0] or ""),
-                ):
+                match = _ERROR_STATUS.match(str(row[0] or "")) if row else None
+                if match is None or int(match.group(1)) not in allowed:
                     return False
                 claimed = self.conn.execute(
                     """
