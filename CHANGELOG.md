@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `generate_summary_json` takes an optional `run_collection`. When it is set, the summary JSON gains a `run` object (this execution's per-source counts, sanitized failures, and last success times) and a `sources_window` label that marks `sources` as the rolling window, defaulting to 7 days. The window counts themselves are unchanged. Omitting the argument leaves the summary JSON identical to the previous output.
+- `generate_report` forwards that same optional argument. Existing callers do not need to change.
+
 ## v0.2.0
 
 - Adds ontology runtime-contract helpers, summary metadata emission, DuckDB ontology backfill, and opt-in event model payload helpers.

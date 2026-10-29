@@ -10,7 +10,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -18,6 +18,26 @@ from jinja2 import Environment, FileSystemLoader
 
 from radar_core.jsonutil import json_default, json_dumps
 from radar_core.models import Article, CategoryConfig
+
+# Callers pass ``recent_articles`` (default 7 days). ``sources`` counts that
+# rolling window, not the articles fetched in the current execution.
+_DEFAULT_SUMMARY_WINDOW_DAYS = 7
+_RUN_ERROR_LIMIT = 240
+_SENSITIVE_HEADER = re.compile(
+    r"(?i)\b("
+    r"authorization|proxy-authorization|cookie|set-cookie|"
+    r"x-api-key|api-key|x-auth-token|x-amz-security-token"
+    r")\b"
+    r"\s*[:=]\s*"
+    r"(?:bearer\s+)?"
+    r"(?:\"[^\"]*\"|'[^']*'|\S+(?:\s*;\s*\S+)*)"
+)
+_BEARER = re.compile(r"(?i)\bbearer\s+\S+")
+_QUERY_SECRET = re.compile(
+    r"(?i)((?:(?:service|crtfc|api)[_-]?key|(?:access|refresh|id)[_-]?token)=)"
+    r"(?:\"[^\"]*\"|'[^']*'|[^&\s\"']+)"
+)
+_URL_USERINFO = re.compile(r"(://[^/\s:@]+:)([^@/\s]+)@")
 
 
 def generate_report(
@@ -32,11 +52,15 @@ def generate_report(
     prev_report: str | None = None,
     next_report: str | None = None,
     ontology_metadata: Mapping[str, Any] | None = None,
+    run_collection: Mapping[str, Any] | None = None,
 ) -> Path:
     """Generate an HTML report from collected articles.
 
     Renders a Jinja2 template with article data, statistics, and optional plugin charts.
     Creates both a timestamped version (e.g., category_20240315.html) and a main report file.
+
+    ``run_collection`` is optional and is forwarded to :func:`generate_summary_json`.
+    Existing callers that omit it keep the previous summary JSON.
 
     Args:
         category: CategoryConfig object containing category metadata and configuration.
@@ -173,6 +197,7 @@ def generate_report(
         stats,
         output_path.parent,
         ontology_metadata=ontology_metadata,
+        run_collection=run_collection,
     )
     return output_path
 
@@ -349,38 +374,68 @@ def generate_index_html(
 
 def generate_summary_json(
     category_name: str,
-    articles: list[dict],
+    articles: list[dict[str, Any]],
     stats: dict[str, int],
     output_dir: Path,
     ontology_metadata: Mapping[str, Any] | None = None,
+    run_collection: Mapping[str, Any] | None = None,
 ) -> Path:
     """Generate a JSON summary of articles and statistics.
 
     Creates a structured JSON file containing article metadata, entity counts,
     and collection statistics for programmatic access and archival.
 
+    ``articles`` is the rolling window the caller loaded, usually
+    ``RadarStorage.recent_articles`` (default 7 days). ``sources``,
+    ``article_count``, ``source_count``, and ``matched_count`` are that
+    cumulative window. They are not the number of articles fetched in the
+    current execution. A source that failed today can still show a positive
+    ``sources`` count when older rows remain inside the window.
+
+    Pass ``run_collection`` to record this execution under the ``run`` key:
+    per-source fetch counts (including zeros), failed sources with error text
+    capped at 240 characters and stripped of secrets and header values, and
+    the last successful store time per source. The same call also adds
+    ``sources_window``, which names ``sources`` as the rolling-window total.
+    Omit ``run_collection`` (or pass ``None``) and the JSON keys and values
+    stay exactly as they were before this argument existed.
+
+    ``stats`` remains ``dict[str, int]`` and cannot carry nested run data.
+    ``stats["window_days"]`` only affects the ``sources_window`` label.
+
     Args:
         category_name: Category name to include in the summary and output filename.
-        articles: List of article dictionaries to summarize.
-        stats: Dictionary of statistics to include in the summary.
+        articles: Rolling-window article dictionaries. Radar runners pass the
+            recent 7-day rows used for the report, not this run's raw fetch.
+        stats: Integer statistics. ``window_days`` labels the rolling window
+            when ``run_collection`` is set. It is not written on its own.
         output_dir: Directory where the summary JSON file will be written.
+        ontology_metadata: Optional ontology block. Omitted when empty.
+        run_collection: Optional this-run record. Recognized keys are
+            ``collected_counts``, ``collected_total``, ``failed_sources`` or
+            ``errors``, and ``last_success_at``. Unknown keys are ignored.
 
     Returns:
         Path to the generated summary JSON file.
 
     Raises:
         IOError: If the output directory cannot be created or file cannot be written.
+        TypeError: If ``run_collection`` is not a mapping.
     """
+    if run_collection is not None and not isinstance(run_collection, Mapping):
+        raise TypeError("run_collection must be a mapping or None")
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    source_counts: Counter[str] = Counter()
+    # Counts the articles argument (the rolling window), not this execution.
+    rolling_window_source_counts: Counter[str] = Counter()
     entity_counts: Counter[str] = Counter()
     matched_count = 0
 
     for article in articles:
         source = article.get("source")
         if isinstance(source, str) and source:
-            source_counts[source] += 1
+            rolling_window_source_counts[source] += 1
 
         matched_entities = article.get("matched_entities")
         if isinstance(matched_entities, list):
@@ -407,13 +462,15 @@ def generate_summary_json(
         "date": now.date().isoformat(),
         "category": category_name,
         "article_count": int(stats.get("article_count", len(articles))),
-        "source_count": int(stats.get("source_count", len(source_counts))),
+        "source_count": int(
+            stats.get("source_count", len(rolling_window_source_counts))
+        ),
         "matched_count": int(stats.get("matched_count", matched_count)),
         "top_entities": [
             {"name": name, "count": count}
             for name, count in entity_counts.most_common(20)
         ],
-        "sources": dict(source_counts),
+        "sources": dict(rolling_window_source_counts),
         "generated_at": now.isoformat(),
     }
     # Opt-in preservation of per-article `event_model_payload` for ontology-aware
@@ -429,6 +486,11 @@ def generate_summary_json(
     normalized_ontology = _normalize_summary_metadata(ontology_metadata)
     if normalized_ontology:
         summary["ontology"] = normalized_ontology
+    if run_collection is not None:
+        # Names the existing ``sources`` map as the rolling window without
+        # changing those counts. Absent unless the caller opted in.
+        summary["sources_window"] = _sources_window_metadata(stats)
+        summary["run"] = _normalize_run_collection(run_collection)
 
     output_path = output_dir / f"{category_name}_{date_stamp}_summary.json"
     output_path.write_text(
@@ -478,6 +540,205 @@ def _normalize_summary_metadata(metadata: Mapping[str, Any] | None) -> dict[str,
             continue
         normalized[normalized_key] = _normalize_summary_metadata_value(value)
     return normalized
+
+
+def _sources_window_metadata(stats: Mapping[str, Any]) -> dict[str, Any]:
+    """Describe ``sources`` as the rolling window, defaulting to 7 days."""
+    raw_days = stats.get("window_days", _DEFAULT_SUMMARY_WINDOW_DAYS)
+    if isinstance(raw_days, bool) or not isinstance(raw_days, int) or raw_days < 1:
+        days = _DEFAULT_SUMMARY_WINDOW_DAYS
+    else:
+        days = raw_days
+    return {
+        "days": days,
+        "scope": "rolling_window_cumulative",
+        "counts_field": "sources",
+        "description": (
+            "sources, article_count, source_count, matched_count는 "
+            f"최근 {days}일 누적 기사 수입니다. "
+            "이번 실행의 소스별 수집 건수는 run.collected_counts입니다."
+        ),
+    }
+
+
+def _normalize_run_collection(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy this-run counts into the summary ``run`` object.
+
+    Error strings are capped and stripped here so a caller can pass the raw
+    ``collect_sources`` messages without writing secrets into the summary.
+    Unknown keys on ``raw`` are dropped.
+    """
+    counts = _normalize_collected_counts(raw.get("collected_counts"))
+    known_sources = set(counts)
+    last_success = _normalize_last_success(raw.get("last_success_at"))
+    known_sources.update(last_success)
+    failed = _normalize_failed_sources(raw, known_sources)
+    for item in failed:
+        name = item["source"]
+        if isinstance(name, str) and name and name not in counts:
+            counts[name] = 0
+    total = _non_negative_int(raw.get("collected_total"))
+    if total is None:
+        total = sum(counts.values())
+    return {
+        "collected_total": total,
+        "collected_counts": counts,
+        "failed_sources": failed,
+        "last_success_at": last_success,
+    }
+
+
+def _normalize_collected_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for key, raw_count in value.items():
+        name = str(key).strip()
+        parsed = _non_negative_int(raw_count)
+        if not name or parsed is None:
+            continue
+        counts[name] = parsed
+    return counts
+
+
+def _normalize_failed_sources(
+    raw: Mapping[str, Any],
+    known_sources: set[str],
+) -> list[dict[str, Any]]:
+    payload = raw.get("failed_sources", raw.get("errors"))
+    grouped: dict[str, list[str]] = {}
+    order: list[str] = []
+
+    def add(source: str, messages: list[object]) -> None:
+        name = source.strip()
+        if name not in grouped:
+            grouped[name] = []
+            order.append(name)
+        for message in messages:
+            detail = _sanitize_error_detail(message)
+            if detail:
+                grouped[name].append(detail)
+
+    if isinstance(payload, Mapping):
+        for key, value in payload.items():
+            add(str(key), _coerce_messages(value))
+    elif isinstance(payload, (list, tuple)):
+        for item in payload:
+            if isinstance(item, str):
+                source, message = _split_source_error(item, known_sources)
+                add(source, [message if source else item])
+            elif isinstance(item, Mapping):
+                source = str(item.get("source") or item.get("name") or "")
+                messages = _error_messages(item)
+                if source.strip():
+                    add(source, messages)
+                else:
+                    for raw_message in messages:
+                        text = (
+                            raw_message
+                            if isinstance(raw_message, str)
+                            else str(raw_message)
+                        )
+                        split_source, split_message = _split_source_error(
+                            text, known_sources
+                        )
+                        add(split_source, [split_message if split_source else text])
+            elif item is not None:
+                add("", [item])
+    return [
+        {"source": name, "errors": grouped[name]}
+        for name in order
+        if name or grouped[name]
+    ]
+
+
+def _error_messages(item: Mapping[str, Any]) -> list[object]:
+    if "errors" in item:
+        return _coerce_messages(item.get("errors"))
+    if "error" in item:
+        return _coerce_messages(item.get("error"))
+    if "message" in item:
+        return _coerce_messages(item.get("message"))
+    return []
+
+
+def _coerce_messages(value: object) -> list[object]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [item for item in value if item is not None]
+    if value is None:
+        return []
+    return [value]
+
+
+def _split_source_error(text: str, known_sources: set[str]) -> tuple[str, str]:
+    matches = [name for name in known_sources if text.startswith(f"{name}:")]
+    if matches:
+        name = max(matches, key=len)
+        return name, text[len(name) + 1 :].lstrip()
+    if ": " in text:
+        name, _, message = text.partition(": ")
+        name = name.strip()
+        if name:
+            return name, message.strip()
+    return "", text.strip()
+
+
+def _normalize_last_success(value: object) -> dict[str, str | None]:
+    if not isinstance(value, Mapping):
+        return {}
+    normalized: dict[str, str | None] = {}
+    for key, raw_value in value.items():
+        name = str(key).strip()
+        if not name:
+            continue
+        normalized[name] = _normalize_timestamp(raw_value)
+    return normalized
+
+
+def _normalize_timestamp(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        stamped = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return stamped.astimezone(timezone.utc).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        candidate = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
+    return None
+
+
+def _non_negative_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value >= 0 else 0
+
+
+def _sanitize_error_detail(value: object, *, limit: int = _RUN_ERROR_LIMIT) -> str:
+    """Drop header values and obvious secrets, then cap the stored error text."""
+    text = value if isinstance(value, str) else str(value)
+    text = _SENSITIVE_HEADER.sub(lambda match: f"{match.group(1)}=[redacted]", text)
+    text = _BEARER.sub("Bearer [redacted]", text)
+    text = _QUERY_SECRET.sub(r"\1[redacted]", text)
+    text = _URL_USERINFO.sub(r"\1[redacted]@", text)
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    if limit < 4:
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _normalize_summary_metadata_value(value: Any) -> Any:
