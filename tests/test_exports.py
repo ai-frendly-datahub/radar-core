@@ -128,6 +128,12 @@ def test_all_exports_match_public_api() -> None:
         "load_runtime_contract",
         "WebhookConfig",
         "WebhookNotifier",
+        "RunHealthVerdict",
+        "build_run_health",
+        "count_stored_items",
+        "evaluate_run_health",
+        "merge_run_health",
+        "write_run_health",
     }
 
     assert set(radar_core.__all__) == expected_exports
