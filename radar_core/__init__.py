@@ -34,6 +34,14 @@ from .exceptions import (
     SourceError,
     StorageError,
 )
+from .health import (
+    RunHealthVerdict,
+    build_run_health,
+    count_stored_items,
+    evaluate_run_health,
+    merge_run_health,
+    write_run_health,
+)
 from .jsonutil import json_default, json_dumps
 from .logger import configure_logging, get_logger
 from .models import (
@@ -119,6 +127,7 @@ __all__ = [
     "RawLogger",
     "ReadabilityExtractor",
     "ReportError",
+    "RunHealthVerdict",
     "SearchError",
     "SearchIndex",
     "SearchResult",
@@ -140,13 +149,16 @@ __all__ = [
     "backfill_duckdb_ontology",
     "build_article_ontology_metadata",
     "build_event_model_payload",
+    "build_run_health",
     "build_summary_ontology_metadata",
     "collect_reddit_source",
     "collect_reddit_sources",
     "collect_sources",
     "compact_duckdb_file",
     "configure_logging",
+    "count_stored_items",
     "daily_partition_date",
+    "evaluate_run_health",
     "extract_url_content",
     "extract_url_content_safe",
     "filter_sources",
@@ -158,6 +170,7 @@ __all__ = [
     "load_notification_config",
     "load_runtime_contract",
     "load_settings",
+    "merge_run_health",
     "parse_feed_entry",
     "parse_html_published",
     "parse_published",
@@ -165,4 +178,5 @@ __all__ = [
     "parse_unix_timestamp",
     "resolve_default_timezone",
     "to_utc_iso",
+    "write_run_health",
 ]

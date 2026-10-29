@@ -8,6 +8,7 @@
 - Daily partition keys (`data/raw`, snapshots, dated reports) are the Asia/Seoul calendar date of the collection instant. See `docs/timezone-backfill.md`.
 - `generate_summary_json` takes an optional `run_collection`. When it is set, the summary JSON gains a `run` object (this execution's per-source counts, sanitized failures, and last success times) and a `sources_window` label that marks `sources` as the rolling window, defaulting to 7 days. The window counts themselves are unchanged. Omitting the argument leaves the summary JSON identical to the previous output.
 - `generate_report` forwards that same optional argument. Existing callers do not need to change.
+- A collection run can record `run_health` on the quality report JSON (`sources_attempted`, `sources_with_fetch_errors`, `raw_items_fetched`, `items_stored_new`, `items_stored_upserted`, `items_stored`). `python -m radar_core.health --report <path>` exits non-zero and prints a GitHub Actions annotation when stored items are below `--min-stored` (default 1) or every attempted source had a fetch error. See `docs/run-health.md`.
 
 ## v0.2.0
 
